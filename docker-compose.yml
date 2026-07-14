@@ -1,0 +1,41 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: history_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  history:
+    build:
+      context: ./history-service
+    environment:
+      DATABASE_URL: postgres://postgres:example@postgres:5432/history_db
+    depends_on:
+      - postgres
+
+  backend:
+    build:
+      context: ./backend-service
+    environment:
+      HISTORY_URL: http://history:8001/history/events
+    depends_on:
+      - history
+    ports:
+      - "8000:8000"
+
+  ui:
+    build:
+      context: ./ui-service
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
