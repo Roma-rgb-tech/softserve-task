@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Query, BackgroundTasks, Request, HTTPException
+from fastapi import FastAPI, Query, Request, HTTPException
 import httpx
 from typing import Any, Dict, Optional
 from datetime import datetime
@@ -50,7 +50,7 @@ async def geocode_proxy(q: str):
 
 
 @app.get("/weather")
-async def weather(request: Request, background_tasks: BackgroundTasks,
+async def weather(request: Request,
                   lat: Optional[float] = Query(None), lon: Optional[float] = Query(None), city: Optional[str] = Query(None)):
     chosen = None
     if city:
@@ -76,9 +76,20 @@ async def weather(request: Request, background_tasks: BackgroundTasks,
         "response_status": resp.status_code,
         "response_body": data
     }
-    background_tasks.add_task(send_history_event, event)
 
-    result = {"source": "open-meteo", "payload": data}
+    history_rows = []
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            await client.post(f"{HISTORY_BASE}/history/events", json=event)
+        except Exception:
+            pass
+        try:
+            resp_hist = await client.get(f"{HISTORY_BASE}/history/recent?limit=20")
+            history_rows = resp_hist.json()
+        except Exception:
+            history_rows = []
+
+    result = {"source": "open-meteo", "payload": data, "history": history_rows}
     if chosen:
         result["location_name"] = chosen
     return result
