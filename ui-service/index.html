@@ -146,19 +146,19 @@
         const q = cityEl.value.trim();
         if (!q) return;
         acTimer = setTimeout(async () => {
-          try {
-            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5`);
-            const j = await res.json();
-            datalist.innerHTML = '';
-            (j.results || []).forEach(r => {
-              const opt = document.createElement('option');
-              opt.value = `${r.name}${r.country ? ', ' + r.country : ''}`;
-              datalist.appendChild(opt);
-            });
-          } catch (e) {
-            // ignore
-          }
-        }, 300);
+            try {
+              const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+              const j = await res.json();
+              datalist.innerHTML = '';
+              (j.results || []).forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = `${r.name}${r.country ? ', ' + r.country : ''}`;
+                datalist.appendChild(opt);
+              });
+            } catch (e) {
+              // ignore
+            }
+          }, 300);
       });
 
       clearBtn.addEventListener('click', async () => {
