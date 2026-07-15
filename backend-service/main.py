@@ -36,6 +36,19 @@ async def geocode_city(name: str) -> Optional[Dict[str, Any]]:
     return {"name": top.get("name"), "latitude": top.get("latitude"), "longitude": top.get("longitude"), "country": top.get("country")}
 
 
+@app.get("/geocode")
+async def geocode_proxy(q: str):
+    """Proxy endpoint for geocoding API so UI doesn't call external services directly."""
+    params = {"name": q, "count": 5}
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            resp = await client.get(GEOCODE_API, params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+
 @app.get("/weather")
 async def weather(request: Request, background_tasks: BackgroundTasks,
                   lat: Optional[float] = Query(None), lon: Optional[float] = Query(None), city: Optional[str] = Query(None)):
