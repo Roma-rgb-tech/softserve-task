@@ -1,4 +1,5 @@
 # Weather microservices demo
+<img width="1315" height="599" alt="image" src="https://github.com/user-attachments/assets/40e741fe-3163-4967-b3f3-bf590766fc4f" />
 
 This is a minimal multi-service application for a learning assignment. It contains:
 
