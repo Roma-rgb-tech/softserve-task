@@ -1,4 +1,6 @@
 # Weather microservices demo
+<img width="1295" height="739" alt="image" src="https://github.com/user-attachments/assets/be9110f3-24d2-4a1d-9921-0ab208ded489" />
+
 
 This repository implements a small Weather microservice demo using Docker Compose.
 It is designed to show a front-end service, a backend/orchestration service, a history persistence service, and a PostgreSQL database.
