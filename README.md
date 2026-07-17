@@ -75,6 +75,113 @@ psql -h localhost -U postgres -d history_db -W
 SELECT id, event_time, path, query_params, response_status FROM requests_history ORDER BY id DESC LIMIT 10;
 ```
 
+
+## Running without Docker (native, no containers)
+ 
+This runs the exact same four components (PostgreSQL, history-service, backend-service, ui-service)
+directly on your machine, with no Docker involved.
+ 
+### 0. Prerequisites
+ 
+- Python 3.11+ (with `venv`)
+- PostgreSQL 15 installed locally (`postgres` binary + `psql` client)
+- nginx installed locally (used only to reproduce the `/api/*` reverse proxy that keeps the UI
+  talking exclusively to the backend — the same rule that applies in the Docker setup)
+On Debian/Ubuntu:
+ 
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib nginx python3-venv python3-pip
+```
+ 
+On macOS (Homebrew):
+ 
+```bash
+brew install postgresql@15 nginx
+brew services start postgresql@15
+```
+ 
+### 1. Start PostgreSQL and create the database
+ 
+```bash
+sudo service postgresql start        # or: brew services start postgresql@15
+ 
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'example';"
+sudo -u postgres createdb history_db
+```
+ 
+(The `history-service` will create the `requests_history` table automatically on startup —
+no manual schema migration needed.)
+ 
+### 2. Run the History service (port 8001)
+ 
+```bash
+cd history-service
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+ 
+export DATABASE_URL="postgres://postgres:example@localhost:5432/history_db"
+uvicorn main:app --host 0.0.0.0 --port 8001
+```
+ 
+Keep this terminal open. In a new terminal, continue with step 3.
+ 
+### 3. Run the Backend / Proxy service (port 8000)
+ 
+```bash
+cd backend-service
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+ 
+export HISTORY_BASE="http://localhost:8001"
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+ 
+> Note: the backend reads the `HISTORY_BASE` env var (defaults to `http://history:8001`, the
+> Docker service name). `docker-compose.yml` currently sets `HISTORY_URL` instead, which the
+> code never reads — it only works in Docker by coincidence, because the default host `history`
+> matches the compose service name. Worth fixing to `HISTORY_BASE` for clarity.
+ 
+### 4. Serve the UI through nginx (port 8080), proxying `/api/*` to the backend
+ 
+The shipped `ui-service/nginx.conf` proxies to `http://backend:8000/`, which is a Docker DNS
+name and won't resolve outside Docker. For a local run, use a copy with `localhost` instead:
+ 
+```bash
+cd ui-service
+sed 's/backend:8000/127.0.0.1:8000/' nginx.conf > local-nginx.conf
+mkdir -p logs
+nginx -p "$(pwd)" -c local-nginx.conf
+```
+ 
+Open the UI at:
+ 
+```text
+http://localhost:8080
+```
+ 
+To stop this local nginx instance later: `nginx -p "$(pwd)" -c local-nginx.conf -s stop`
+ 
+### Quick alternative (skip nginx entirely)
+ 
+If you don't want to install nginx, you can add CORS to the backend (e.g.
+`fastapi.middleware.cors.CORSMiddleware`, allow `http://localhost:8080`) and serve
+`ui-service/index.html` with `python3 -m http.server 8080`. You'd then need to point the
+frontend's `fetch()` calls at `http://localhost:8000/...` instead of `/api/...`. This is
+faster for a quick check, but it no longer enforces "UI talks only to the backend" the same
+way the nginx proxy does — the nginx route above is the closer match to the assignment's
+architecture rule.
+ 
+## Database inspection
+ 
+Connect to PostgreSQL:
+ 
+```bash
+psql -h localhost -U postgres -d history_db -W
+SELECT id, event_time, path, query_params, response_status FROM requests_history ORDER BY id DESC LIMIT 10;
+```
+
+
 ## Notes
 
 - The app uses `POSTGRES_PASSWORD=example` and database `history_db`.
