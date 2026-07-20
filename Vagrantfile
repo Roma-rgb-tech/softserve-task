@@ -140,8 +140,8 @@ After=network.target
 
 [Service]
 WorkingDirectory=/opt/app/backend-service
-Environment=HISTORY_BASE=http://history:8001
-Environment=POLL_INTERVAL_SECONDS=10
+Environment=HISTORY_BASE=http://192.168.105.11:8001
+Environment=POLL_INTERVAL_SECONDS=3600
 Environment=WATCHED_CITIES=Kyiv,Lviv
 Environment=MAX_WATCHED_CITIES=3600
 ExecStart=/opt/backend-venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
