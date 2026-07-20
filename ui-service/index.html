@@ -10,6 +10,7 @@
       body { padding: 1.5rem; background: #f5f7fb; }
       .card-weather { min-height: 160px; }
       .loading { opacity: 0.6; }
+      .aq-badge { font-size: 0.72rem; }
     </style>
   </head>
   <body>
@@ -19,23 +20,23 @@
           <div class="text-muted">Demo: Open‑Meteo • FastAPI • Postgres</div>
         </div>
 
-      <div class="row g-3">
-        <div class="col-md-5">
-          <div class="card card-weather p-3 text-white" style="background: linear-gradient(135deg,#667eea,#764ba2);">
-            <div class="mb-2 d-flex gap-2">
-              <div class="input-group">
-                <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass"></i></span>
-                <input id="city" class="form-control" placeholder="Enter city (e.g. Kyiv)" list="cities" />
-                <datalist id="cities"></datalist>
-                <button id="btn" class="btn btn-light">Search</button>
-              </div>
-              <button id="auto" class="btn btn-outline-light">Auto: off</button>
-            </div>
-            <div id="weather" class="fw-normal text-sm">No data yet — search a city.</div>
+      <div class="row g-3 mb-3">
+        <div class="col-12">
+          <div class="input-group">
+            <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input id="city" class="form-control" placeholder="Add or refresh a city (e.g. Kyiv)" list="cities" />
+            <datalist id="cities"></datalist>
+            <button id="btn" class="btn btn-primary">Search</button>
           </div>
         </div>
+      </div>
 
-        <div class="col-md-7">
+      <div id="citiesRow" class="row g-3 mb-4">
+        <!-- one card per tracked city, rendered by renderCities() -->
+      </div>
+
+      <div class="row g-3">
+        <div class="col-12">
           <div class="card p-3">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h5 class="mb-0">Recent requests</h5>
@@ -45,11 +46,13 @@
             </div>
             <div class="table-responsive">
               <table class="table table-sm" id="history-table">
-                <thead class="table-light"><tr><th></th><th>ID</th><th>Time</th><th>City</th><th>Params</th><th>Status</th></tr></thead>
+                <thead class="table-light">
+                  <tr><th></th><th>ID</th><th>Time</th><th>City</th><th>Temp</th><th>Humidity</th><th>NO₂</th><th>Params</th><th>Status</th></tr>
+                </thead>
                 <tbody></tbody>
               </table>
             </div>
-            <div class="text-muted small">Auto-refreshes when you fetch or every 20s.</div>
+            <div class="text-muted small">Refreshes automatically every 20s.</div>
           </div>
         </div>
       </div>
@@ -57,48 +60,115 @@
 
       <script>
       const btn = document.getElementById('btn');
-      const autoBtn = document.getElementById('auto');
       const cityEl = document.getElementById('city');
       const datalist = document.getElementById('cities');
       const clearBtn = document.getElementById('clear');
-      const weatherEl = document.getElementById('weather');
+      const citiesRow = document.getElementById('citiesRow');
       const tableBody = document.querySelector('#history-table tbody');
-      let auto = false;
-      let timer = null;
 
-      async function fetchWeather() {
-        const city = cityEl.value.trim();
-        if (!city) {
-          weatherEl.innerText = 'Enter a city name.';
-          return;
+      // Cards we already know about, keyed by city name, so a failed
+      // refresh for one city never wipes the others off the screen.
+      const cardState = {};
+
+      function fmtNum(v, digits = 1) {
+        return (v === null || v === undefined) ? '—' : Number(v).toFixed(digits);
+      }
+
+      function aqLevel(no2) {
+        if (no2 == null) return 'secondary';
+        if (no2 < 40) return 'success';
+        if (no2 < 100) return 'warning';
+        return 'danger';
+      }
+
+      function cardHtml(name, reading) {
+        if (!reading) {
+          return `<div class="card card-weather p-3 text-white" style="background: linear-gradient(135deg,#9aa0a6,#6c7278);">
+            <div class="fw-semibold">${name}</div>
+            <div class="small">Waiting for first reading…</div>
+          </div>`;
         }
-        weatherEl.classList.add('loading');
+        const aq = reading.air_quality || {};
+        return `
+          <div class="card card-weather p-3 text-white" style="background: linear-gradient(135deg,#667eea,#764ba2);">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <h2 class="display-6 fw-bold mb-0">${fmtNum(reading.temperature)}°C</h2>
+                <div>${name}</div>
+                <div class="small opacity-75">Feels like ${fmtNum(reading.apparent_temperature)}°C</div>
+              </div>
+              <div class="text-end small">
+                <div>Wind: ${fmtNum(reading.windspeed)} m/s</div>
+                <div>Dir: ${fmtNum(reading.winddirection, 0)}°</div>
+                <div>Humidity: ${fmtNum(reading.humidity, 0)}%</div>
+                <div>Pressure: ${fmtNum(reading.pressure, 0)} hPa</div>
+                <div>Precip: ${fmtNum(reading.precipitation, 1)} mm</div>
+              </div>
+            </div>
+            <hr class="opacity-25 my-2">
+            <div class="d-flex flex-wrap gap-2">
+              <span class="badge bg-${aqLevel(aq.nitrogen_dioxide)} aq-badge">NO₂ ${fmtNum(aq.nitrogen_dioxide, 0)} µg/m³</span>
+              <span class="badge bg-light text-dark aq-badge">PM2.5 ${fmtNum(aq.pm2_5, 0)}</span>
+              <span class="badge bg-light text-dark aq-badge">PM10 ${fmtNum(aq.pm10, 0)}</span>
+              <span class="badge bg-light text-dark aq-badge">O₃ ${fmtNum(aq.ozone, 0)}</span>
+              <span class="badge bg-light text-dark aq-badge">CO ${fmtNum(aq.carbon_monoxide, 0)}</span>
+            </div>
+          </div>`;
+      }
+
+      function renderCitiesRow() {
+        const names = Object.keys(cardState);
+        citiesRow.innerHTML = names.map(name =>
+          `<div class="col-md-6 col-lg-4">${cardHtml(name, cardState[name])}</div>`
+        ).join('');
+      }
+
+      // Ask the backend which cities it's currently tracking, then pull a
+      // reading for each — this is what draws the card grid on load and
+      // on every auto-refresh tick.
+      async function refreshTrackedCities() {
+        try {
+          const res = await fetch('/api/cities');
+          if (!res.ok) throw new Error(`backend returned ${res.status}`);
+          const json = await res.json();
+          const names = json.cities || [];
+          for (const name of names) {
+            if (!(name in cardState)) cardState[name] = null; // placeholder until first reading arrives
+          }
+          await Promise.all(names.map(async (name) => {
+            try {
+              const r = await fetch(`/api/latest?city=${encodeURIComponent(name)}`);
+              if (!r.ok) return; // keep previous card state on a transient miss
+              const j = await r.json();
+              cardState[name] = j.payload;
+            } catch (e) { /* keep previous state */ }
+          }));
+          renderCitiesRow();
+        } catch (e) {
+          console.error('refreshTrackedCities failed', e);
+        }
+        await fetchHistory();
+      }
+
+      // Manual search: adds/refreshes one city via the on-demand endpoint,
+      // which also registers it in the backend's background poll pool.
+      async function searchCity() {
+        const city = cityEl.value.trim();
+        if (!city) return;
+        btn.disabled = true;
+        btn.classList.add('loading');
         try {
           const res = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+          if (!res.ok) throw new Error(`backend returned ${res.status}`);
           const json = await res.json();
-          const cw = json.payload?.current_weather || null;
-          let html = '';
-          const location = json.location_name || city;
-          if (cw) {
-            html = `
-              <div class="d-flex align-items-center justify-content-between">
-                <div>
-                  <h2 class="display-5 fw-bold">${cw.temperature}°C</h2>
-                  <div>${location}</div>
-                </div>
-                <div class="text-end small">
-                  <div>Wind: ${cw.windspeed} m/s</div>
-                  <div>Dir: ${cw.winddirection}°</div>
-                </div>
-              </div>`;
-          } else {
-            html = `<pre>${JSON.stringify(json, null, 2)}</pre>`;
-          }
-          weatherEl.innerHTML = html;
+          cardState[json.location_name || city] = json.payload;
+          renderCitiesRow();
         } catch (e) {
-          weatherEl.innerText = 'Error fetching weather: ' + e;
+          console.error('search failed', e);
+          alert('Could not fetch that city: ' + e.message);
         } finally {
-          weatherEl.classList.remove('loading');
+          btn.disabled = false;
+          btn.classList.remove('loading');
         }
         await fetchHistory();
       }
@@ -106,34 +176,44 @@
       async function fetchHistory() {
         try {
           const res = await fetch('/api/history/recent?limit=15');
+          if (!res.ok) throw new Error(`backend returned ${res.status}`);
           const rows = await res.json();
-          tableBody.innerHTML = '';
+          // Build into a detached fragment first — if anything throws
+          // mid-build, the on-screen table is untouched.
+          const frag = document.createDocumentFragment();
           for (const r of rows) {
+            const reading = r.response_body || {};
+            const aq = reading.air_quality || {};
+            const icon = getWeatherIcon(reading);
             const tr = document.createElement('tr');
-            const icon = getWeatherIcon(r.response_body?.current_weather);
             tr.innerHTML = `
               <td class="align-middle">${icon}</td>
               <td>${r.id}</td>
               <td>${new Date(r.event_time).toLocaleString()}</td>
-              <td>${r.response_body?.location_name || r.query_params?.city || ''}</td>
+              <td>${r.query_params?.city || ''}</td>
+              <td>${fmtNum(reading.temperature)}°C</td>
+              <td>${fmtNum(reading.humidity, 0)}%</td>
+              <td>${fmtNum(aq.nitrogen_dioxide, 0)}</td>
               <td>${JSON.stringify(r.query_params)}</td>
               <td>${r.response_status} <button data-id="${r.id}" class="btn btn-sm btn-link text-danger del">Delete</button></td>`;
-            tableBody.appendChild(tr);
+            frag.appendChild(tr);
           }
-          // attach delete handlers
-          document.querySelectorAll('.del').forEach(btn => btn.addEventListener('click', async (e) => {
+          tableBody.innerHTML = '';
+          tableBody.appendChild(frag);
+          document.querySelectorAll('.del').forEach(b => b.addEventListener('click', async (e) => {
             const id = e.currentTarget.getAttribute('data-id');
             await fetch(`/api/history/${id}`, { method: 'DELETE' });
             fetchHistory();
           }));
         } catch (e) {
           console.error('history fetch', e);
+          // keep whatever rows were already on screen
         }
       }
 
-      function getWeatherIcon(cw) {
-        if (!cw) return '<i class="fa-solid fa-cloud fa-lg text-secondary"></i>';
-        const t = cw.temperature;
+      function getWeatherIcon(reading) {
+        if (!reading || reading.temperature == null) return '<i class="fa-solid fa-cloud fa-lg text-secondary"></i>';
+        const t = reading.temperature;
         if (t >= 25) return '<i class="fa-solid fa-sun fa-lg text-warning"></i>';
         if (t >= 10) return '<i class="fa-solid fa-cloud-sun fa-lg text-info"></i>';
         return '<i class="fa-solid fa-snowflake fa-lg text-primary"></i>';
@@ -167,19 +247,13 @@
         fetchHistory();
       });
 
-      btn.addEventListener('click', fetchWeather);
-      autoBtn.addEventListener('click', () => {
-        auto = !auto;
-        autoBtn.innerText = 'Auto: ' + (auto ? 'on' : 'off');
-        if (auto) {
-          timer = setInterval(fetchWeather, 20000);
-        } else {
-          clearInterval(timer);
-        }
-      });
+      btn.addEventListener('click', searchCity);
+      cityEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchCity(); });
 
-      // initial load
-      fetchHistory();
+      // Always-on auto-refresh: no toggle, just keep reading the backend's
+      // own tracked-city pool every 20s.
+      refreshTrackedCities();
+      setInterval(refreshTrackedCities, 20000);
     </script>
   </body>
 </html>
