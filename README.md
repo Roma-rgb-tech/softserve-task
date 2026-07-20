@@ -18,7 +18,7 @@ The system is composed of four services:
 The UI only communicates with the backend via `/api/*`.
 The backend is the only component that calls the public Open-Meteo APIs and the only component that sends events to the history service.
 
-## Running locally
+## Running locally(Docker)
 
 Start the full stack:
 
@@ -37,7 +37,34 @@ Stop and remove containers and volumes:
 ```bash
 docker-compose down -v
 ```
+## Running with Vagrant (Alternative)
 
+If you want to run the stack inside virtual machines using Vagrant (configured for ARM64/Apple Silicon via QEMU or VMware), follow these steps:
+
+### Prerequisites
+- Install [Vagrant](https://www.vagrantup.com/)
+- Install a compatible provider (e.g., `vagrant-qemu` or VMware Fusion)
+
+### Start the cluster
+Bring up all the virtual machines defined in the `Vagrantfile`:
+
+```bash
+vagrant up --provider=qemu
+```
+
+### Check status and stop
+
+Check the current state of the virtual machines:
+
+```bash
+vagrant status
+```
+
+Stop and destroy the virtual machines when you are done:
+
+```bash
+vagrant destroy -f
+```
 ## Key endpoints
 
 Backend endpoints (via `http://localhost:8000`):
