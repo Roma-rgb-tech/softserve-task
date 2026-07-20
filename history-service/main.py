@@ -19,10 +19,23 @@ CREATE TABLE IF NOT EXISTS requests_history (
 );
 """
 
+
+async def _init_connection(conn):
+    """asyncpg returns JSONB columns as raw text by default. Without this,
+    every jsonb value comes back as a Python str instead of a dict/list,
+    which then gets double-encoded when FastAPI serializes the response."""
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
+
+
 @app.on_event("startup")
 async def startup():
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL)
+    pool = await asyncpg.create_pool(DATABASE_URL, init=_init_connection)
     async with pool.acquire() as conn:
         await conn.execute(CREATE_TABLE_SQL)
 
@@ -42,9 +55,9 @@ async def receive_event(payload: dict):
             "INSERT INTO requests_history(event_time, path, client_ip, query_params, response_status, response_body) VALUES (now(), $1, $2, $3::jsonb, $4, $5::jsonb)",
             payload.get("path"),
             payload.get("client_ip"),
-            json.dumps(payload.get("query_params") or {}),
+            payload.get("query_params") or {},
             payload.get("response_status"),
-            json.dumps(payload.get("response_body") or {})
+            payload.get("response_body") or {}
         )
     return {"status": "ok"}
 

@@ -22,7 +22,10 @@ services:
     build:
       context: ./backend-service
     environment:
-      HISTORY_URL: http://history:8001/history/events
+      HISTORY_BASE: http://history:8001
+      POLL_INTERVAL_SECONDS: "3600"
+      WATCHED_CITIES: "Kyiv,Lviv"
+      MAX_WATCHED_CITIES: "3600"
     depends_on:
       - history
     ports:

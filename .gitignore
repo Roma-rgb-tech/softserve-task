@@ -23,3 +23,6 @@ env/
 
 # Docker compose override
 docker-compose.override.yml
+
+# Vagrant
+.vagrant/
