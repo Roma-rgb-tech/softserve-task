@@ -1,5 +1,6 @@
 # Weather microservices demo
-<img width="1295" height="739" alt="image" src="https://github.com/user-attachments/assets/be9110f3-24d2-4a1d-9921-0ab208ded489" />
+<img width="1676" height="891" alt="image" src="https://github.com/user-attachments/assets/3d11903a-e60e-41d3-bb78-36846b101255" />
+
 
 
 This repository implements a small Weather microservice demo using Docker Compose.
