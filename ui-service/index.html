@@ -52,7 +52,7 @@
                 <tbody></tbody>
               </table>
             </div>
-            <div class="text-muted small">Refreshes automatically every 20s.</div>
+            <div class="text-muted small">Refreshes automatically every 1 hour.</div>
           </div>
         </div>
       </div>
@@ -253,7 +253,7 @@
       // Always-on auto-refresh: no toggle, just keep reading the backend's
       // own tracked-city pool every 20s.
       refreshTrackedCities();
-      setInterval(refreshTrackedCities, 20000);
+      setInterval(refreshTrackedCities, 3600000);
     </script>
   </body>
 </html>
