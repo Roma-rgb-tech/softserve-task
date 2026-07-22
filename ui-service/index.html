@@ -66,8 +66,6 @@
       const citiesRow = document.getElementById('citiesRow');
       const tableBody = document.querySelector('#history-table tbody');
 
-      // Cards we already know about, keyed by city name, so a failed
-      // refresh for one city never wipes the others off the screen.
       const cardState = {};
 
       function fmtNum(v, digits = 1) {
@@ -123,9 +121,7 @@
         ).join('');
       }
 
-      // Ask the backend which cities it's currently tracking, then pull a
-      // reading for each — this is what draws the card grid on load and
-      // on every auto-refresh tick.
+
       async function refreshTrackedCities() {
         try {
           const res = await fetch('/api/cities');
@@ -138,7 +134,7 @@
           await Promise.all(names.map(async (name) => {
             try {
               const r = await fetch(`/api/latest?city=${encodeURIComponent(name)}`);
-              if (!r.ok) return; // keep previous card state on a transient miss
+              if (!r.ok) return; 
               const j = await r.json();
               cardState[name] = j.payload;
             } catch (e) { /* keep previous state */ }
@@ -150,8 +146,7 @@
         await fetchHistory();
       }
 
-      // Manual search: adds/refreshes one city via the on-demand endpoint,
-      // which also registers it in the backend's background poll pool.
+
       async function searchCity() {
         const city = cityEl.value.trim();
         if (!city) return;
@@ -178,8 +173,6 @@
           const res = await fetch('/api/history/recent?limit=15');
           if (!res.ok) throw new Error(`backend returned ${res.status}`);
           const rows = await res.json();
-          // Build into a detached fragment first — if anything throws
-          // mid-build, the on-screen table is untouched.
           const frag = document.createDocumentFragment();
           for (const r of rows) {
             const reading = r.response_body || {};
@@ -207,7 +200,6 @@
           }));
         } catch (e) {
           console.error('history fetch', e);
-          // keep whatever rows were already on screen
         }
       }
 
@@ -219,7 +211,6 @@
         return '<i class="fa-solid fa-snowflake fa-lg text-primary"></i>';
       }
 
-      // simple autocomplete: fetch geocode suggestions
       let acTimer = null;
       cityEl.addEventListener('input', () => {
         clearTimeout(acTimer);
@@ -250,8 +241,7 @@
       btn.addEventListener('click', searchCity);
       cityEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchCity(); });
 
-      // Always-on auto-refresh: no toggle, just keep reading the backend's
-      // own tracked-city pool every 20s.
+
       refreshTrackedCities();
       setInterval(refreshTrackedCities, 3600000);
     </script>
