@@ -1,457 +1,641 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Weather Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-    <style>
-      body { padding: 1.5rem; background: #f5f7fb; }
-      .card-weather { min-height: 160px; }
-      .loading { opacity: 0.6; }
-      .aq-badge { font-size: 0.72rem; }
-      #chartWrap { height: 220px; }
-      .pref-bar select { min-width: 140px; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="d-flex align-items-center mb-4">
-        <h1 class="me-auto">Weather Dashboard</h1>
-        <div class="text-muted small text-end">
-          Demo: Open‑Meteo • FastAPI • Postgres • Redis • RabbitMQ<br>
-          <span id="sessionBadge" class="text-muted"></span>
-        </div>
-      </div>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skyline — Weather</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=Outfit:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --sky-top: #bfe0f5;
+    --sky-mid: #dceefb;
+    --sky-bot: #fdf6ec;
+    --ink: #1f2d3d;
+    --ink-soft: #5b6b7f;
+    --ink-faint: #8b9aad;
+    --glass: rgba(255,255,255,0.62);
+    --glass-line: rgba(255,255,255,0.85);
+    --accent: #e0705a;
+    --accent-soft: #f6b39f;
+    --good: #4fa88b;
+    --warn: #d99a3c;
+    --bad: #cf5757;
+    --r: 22px;
+    --shadow: 0 10px 40px rgba(80,110,140,0.14);
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    min-height:100vh; color:var(--ink);
+    font-family:'Outfit', system-ui, sans-serif;
+    background:linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 46%, var(--sky-bot) 100%);
+    background-attachment:fixed;
+    transition:background 1.4s ease;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  ::selection{ background:var(--accent-soft); }
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.7); border-radius:9px; }
 
-      <div class="row g-3 mb-3">
-        <div class="col-12">
-          <div class="input-group">
-            <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input id="city" class="form-control" placeholder="Add or refresh a city (e.g. Kyiv)" list="cities" />
-            <datalist id="cities"></datalist>
-            <button id="btn" class="btn btn-primary">Search</button>
-          </div>
-        </div>
-      </div>
+  /* drifting cloud layer behind everything */
+  .cloudfield{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .cf{ position:absolute; border-radius:100px; background:rgba(255,255,255,0.55); filter:blur(1px); }
+  .cf::before,.cf::after{ content:''; position:absolute; border-radius:50%; background:inherit; }
+  .cf1{ width:200px; height:46px; top:12%; animation:drift1 62s linear infinite; }
+  .cf1::before{ width:88px; height:88px; top:-38px; left:26px; }
+  .cf1::after{ width:64px; height:64px; top:-26px; left:104px; }
+  .cf2{ width:150px; height:36px; top:34%; opacity:.5; animation:drift2 86s linear infinite; }
+  .cf2::before{ width:66px; height:66px; top:-28px; left:20px; }
+  .cf2::after{ width:48px; height:48px; top:-18px; left:78px; }
+  .cf3{ width:260px; height:56px; top:62%; opacity:.35; animation:drift1 104s linear infinite; animation-delay:-30s; }
+  .cf3::before{ width:110px; height:110px; top:-48px; left:34px; }
+  .cf3::after{ width:80px; height:80px; top:-32px; left:140px; }
+  @keyframes drift1{ from{ left:-300px } to{ left:110% } }
+  @keyframes drift2{ from{ left:-200px } to{ left:110% } }
 
-      <div id="citiesRow" class="row g-3 mb-4">
-        <!-- one card per tracked city, rendered by renderCities() -->
-      </div>
+  .wrap{ position:relative; z-index:1; max-width:1120px; margin:0 auto; padding:26px 22px 70px; }
 
-      <div class="row g-3 mb-4">
-        <div class="col-12">
-          <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2 pref-bar">
-              <h5 class="mb-0">Temperature trend</h5>
-              <div class="d-flex align-items-center gap-2">
-                <label class="small text-muted mb-0" for="periodSelect">Period</label>
-                <select id="periodSelect" class="form-select form-select-sm">
-                  <option value="24h">Last 24 hours</option>
-                  <option value="7d">Last 7 days</option>
-                  <option value="30d">Last 30 days</option>
-                </select>
-              </div>
-            </div>
-            <div id="chartWrap"><canvas id="tempChart"></canvas></div>
-            <div class="text-muted small mt-1">Built from the history log for the selected period. Saved to your session.</div>
-          </div>
-        </div>
-      </div>
+  /* ---------- top bar ---------- */
+  .topbar{ display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:28px; }
+  .logo{ display:flex; align-items:center; gap:10px; font-family:'Fraunces',serif; font-weight:600; font-size:1.45rem; letter-spacing:-0.01em; }
+  .logo svg{ width:26px; height:26px; }
+  .meta{ font-family:'IBM Plex Mono',monospace; font-size:0.72rem; color:var(--ink-soft); text-align:right; line-height:1.7; }
+  .meta .pill{ background:rgba(255,255,255,0.6); border-radius:999px; padding:2px 9px; margin-left:5px; }
 
-      <div class="row g-3">
-        <div class="col-12">
-          <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2 pref-bar">
-              <h5 class="mb-0">
-                Recent requests
-                <span class="badge text-bg-secondary fw-normal" id="historyCount">0 total</span>
-              </h5>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <label class="small text-muted mb-0" for="cityFilter">City</label>
-                <select id="cityFilter" class="form-select form-select-sm">
-                  <option value="">All cities</option>
-                </select>
-                <label class="small text-muted mb-0" for="pageSizeSelect">Rows</label>
-                <select id="pageSizeSelect" class="form-select form-select-sm">
-                  <option value="20">20</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                </select>
-                <button id="clear" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Clear</button>
-              </div>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-sm" id="history-table">
-                <thead class="table-light">
-                  <tr><th></th><th>ID</th><th>Time</th><th>City</th><th>Temp</th><th>Humidity</th><th>NO₂</th><th>Params</th><th>Status</th></tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-            <div class="d-flex align-items-center justify-content-between">
-              <div class="text-muted small" id="historyStatus">Showing 0 of 0</div>
-              <button id="loadMore" class="btn btn-sm btn-outline-secondary" style="display:none;">
-                Load more <i class="fa-solid fa-angles-down"></i>
-              </button>
-            </div>
-            <div class="text-muted small mt-1">Filter, row count, and chart period are saved to your session (Redis) and restored after refresh.</div>
-          </div>
-        </div>
+  /* ---------- hero ---------- */
+  .hero{
+    background:var(--glass); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--glass-line); border-radius:34px; box-shadow:var(--shadow);
+    padding:38px 40px 34px; margin-bottom:18px; position:relative; overflow:hidden;
+    animation:rise .7s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes rise{ from{ opacity:0; transform:translateY(18px) } to{ opacity:1; transform:none } }
+  .hero-grid{ display:grid; grid-template-columns:1.15fr 1fr; gap:34px; align-items:center; }
+  .hero-city{ font-family:'Fraunces',serif; font-weight:500; font-size:1.5rem; margin:0 0 2px; }
+  .hero-cond{ color:var(--ink-soft); font-size:0.92rem; margin-bottom:14px; }
+  .hero-temp{
+    font-family:'Fraunces',serif; font-weight:300; font-size:6.4rem; line-height:0.92;
+    letter-spacing:-0.04em; margin:0; font-variant-numeric:tabular-nums;
+  }
+  .hero-temp sup{ font-size:1.9rem; font-weight:400; vertical-align:super; color:var(--ink-soft); }
+  .hero-feels{ color:var(--ink-soft); font-size:0.88rem; margin-top:6px; }
+  .hero-scene{ display:flex; align-items:center; justify-content:center; min-height:190px; }
+  .hero-scene svg{ width:100%; max-width:250px; height:auto; overflow:visible; }
+
+  .hero-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:26px; }
+  .hstat{
+    background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.7);
+    border-radius:16px; padding:12px 14px;
+  }
+  .hstat .k{ font-family:'IBM Plex Mono',monospace; font-size:0.66rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-faint); }
+  .hstat .v{ font-family:'Fraunces',serif; font-size:1.35rem; font-weight:500; margin-top:3px; font-variant-numeric:tabular-nums; }
+  .hstat .u{ font-size:0.72rem; color:var(--ink-faint); font-family:'Outfit'; }
+
+  /* ---------- search ---------- */
+  .searchwrap{ position:relative; margin-bottom:26px; }
+  .search{
+    display:flex; align-items:center; gap:12px; padding:12px 18px;
+    background:var(--glass); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--glass-line); border-radius:999px; box-shadow:var(--shadow);
+    transition:box-shadow .2s ease;
+  }
+  .search:focus-within{ box-shadow:0 10px 44px rgba(224,112,90,0.24); }
+  .search svg{ width:19px; height:19px; color:var(--ink-faint); flex:none; }
+  .search input{
+    flex:1; border:0; outline:0; background:transparent; font-family:'Outfit'; font-size:1rem;
+    color:var(--ink); padding:6px 0;
+  }
+  .search input::placeholder{ color:var(--ink-faint); }
+  .search button{
+    border:0; border-radius:999px; padding:10px 20px; cursor:pointer;
+    background:var(--accent); color:#fff; font-family:'Outfit'; font-weight:500; font-size:0.9rem;
+    transition:transform .14s ease, filter .14s ease;
+  }
+  .search button:hover{ filter:brightness(1.06); }
+  .search button:active{ transform:scale(0.96); }
+  .search button:disabled{ opacity:.6; cursor:progress; }
+  .ac{
+    position:absolute; top:calc(100% + 8px); left:14px; right:14px; z-index:30;
+    background:rgba(255,255,255,0.94); backdrop-filter:blur(20px);
+    border:1px solid var(--glass-line); border-radius:18px; box-shadow:var(--shadow);
+    overflow:hidden; display:none;
+  }
+  .ac.open{ display:block; }
+  .ac div{ padding:11px 18px; font-size:0.92rem; cursor:pointer; }
+  .ac div:hover, .ac div.on{ background:rgba(224,112,90,0.1); color:var(--accent); }
+
+  /* ---------- section head ---------- */
+  .shead{ display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap; margin:0 0 14px 4px; }
+  .shead h2{ font-family:'Fraunces',serif; font-weight:500; font-size:1.18rem; margin:0; }
+  .ctrls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .ctrls label{ font-family:'IBM Plex Mono',monospace; font-size:0.66rem; text-transform:uppercase; letter-spacing:0.09em; color:var(--ink-faint); }
+  select{
+    font-family:'Outfit'; font-size:0.86rem; color:var(--ink); cursor:pointer;
+    background:rgba(255,255,255,0.66); border:1px solid var(--glass-line);
+    border-radius:999px; padding:7px 14px; appearance:none;
+  }
+  select:focus{ outline:2px solid var(--accent-soft); outline-offset:1px; }
+
+  /* ---------- city cards ---------- */
+  .cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; margin-bottom:36px; }
+  .card{
+    background:var(--glass); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--glass-line); border-radius:var(--r); box-shadow:var(--shadow);
+    padding:20px; cursor:pointer; position:relative; overflow:hidden;
+    transition:transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
+    animation:rise .6s cubic-bezier(.2,.8,.2,1) both;
+  }
+  .card:hover{ transform:translateY(-4px); box-shadow:0 18px 50px rgba(80,110,140,0.2); }
+  .card.active{ border-color:var(--accent-soft); box-shadow:0 14px 44px rgba(224,112,90,0.22); }
+  .card .cname{ font-family:'Fraunces',serif; font-size:1.02rem; font-weight:500; }
+  .card .ctemp{
+    font-family:'Fraunces',serif; font-weight:300; font-size:2.9rem; line-height:1;
+    letter-spacing:-0.03em; margin:8px 0 2px; font-variant-numeric:tabular-nums;
+  }
+  .card .ctemp sup{ font-size:1rem; color:var(--ink-faint); }
+  .card .cdesc{ color:var(--ink-soft); font-size:0.82rem; }
+  .card .cglyph{ position:absolute; top:16px; right:16px; width:40px; height:40px; opacity:.92; }
+  .card .cbars{ display:flex; gap:5px; margin-top:14px; }
+  .cbar{ flex:1; height:4px; border-radius:4px; background:rgba(255,255,255,0.75); overflow:hidden; }
+  .cbar i{ display:block; height:100%; border-radius:4px; }
+  .card.waiting{ display:flex; align-items:center; justify-content:center; min-height:160px; color:var(--ink-faint); font-size:0.86rem; }
+  .card.waiting .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent-soft); display:inline-block; margin-right:8px; animation:blink 1.4s ease-in-out infinite; }
+  @keyframes blink{ 0%,100%{opacity:.3} 50%{opacity:1} }
+
+  /* ---------- panels ---------- */
+  .panel{
+    background:var(--glass); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--glass-line); border-radius:var(--r); box-shadow:var(--shadow);
+    padding:22px 24px; margin-bottom:26px;
+  }
+  .chartbox{ height:230px; margin-top:8px; }
+  .hint{ color:var(--ink-faint); font-size:0.78rem; margin-top:12px; }
+
+  table{ width:100%; border-collapse:collapse; font-size:0.85rem; }
+  thead th{
+    text-align:left; font-family:'IBM Plex Mono',monospace; font-size:0.64rem;
+    text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-faint);
+    padding:8px 12px; font-weight:500;
+  }
+  tbody tr{ border-top:1px solid rgba(255,255,255,0.85); }
+  tbody tr:hover{ background:rgba(255,255,255,0.42); }
+  tbody td{ padding:11px 12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .tglyph{ width:20px; height:20px; display:block; }
+  .ok{ color:var(--good); } .err{ color:var(--bad); }
+  .del{
+    border:0; background:transparent; color:var(--ink-faint); cursor:pointer;
+    font-family:'Outfit'; font-size:0.78rem; border-radius:8px; padding:3px 8px;
+  }
+  .del:hover{ color:var(--bad); background:rgba(207,87,87,0.1); }
+  .tscroll{ overflow-x:auto; margin:0 -6px; }
+  .empty{ padding:40px; text-align:center; color:var(--ink-faint); font-size:0.9rem; }
+  .foot{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:14px; font-size:0.8rem; color:var(--ink-faint); }
+  .btn-ghost{
+    border:1px solid var(--glass-line); background:rgba(255,255,255,0.6); color:var(--ink);
+    font-family:'Outfit'; font-size:0.82rem; border-radius:999px; padding:8px 16px; cursor:pointer;
+  }
+  .btn-ghost:hover{ border-color:var(--accent-soft); color:var(--accent); }
+  .btn-clear{ color:var(--bad); }
+  .btn-clear:hover{ border-color:var(--bad); background:rgba(207,87,87,0.08); }
+
+  .toasts{ position:fixed; bottom:24px; right:24px; display:flex; flex-direction:column; gap:10px; z-index:100; }
+  .toast{
+    background:rgba(255,255,255,0.95); backdrop-filter:blur(20px);
+    border:1px solid var(--glass-line); border-left:3px solid var(--bad);
+    border-radius:14px; padding:12px 16px; font-size:0.86rem; max-width:290px;
+    box-shadow:var(--shadow); animation:rise .24s ease;
+  }
+  .toast.good{ border-left-color:var(--good); }
+
+  @media (max-width:800px){
+    .hero-grid{ grid-template-columns:1fr; gap:18px; }
+    .hero-scene{ order:-1; min-height:150px; }
+    .hero-temp{ font-size:5rem; }
+    .hero-stats{ grid-template-columns:repeat(2,1fr); }
+    .hero{ padding:28px 24px; }
+  }
+  @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="cloudfield">
+  <div class="cf cf1"></div><div class="cf cf2"></div><div class="cf cf3"></div>
+</div>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="9" cy="9" r="4" fill="#e0705a"/>
+        <path d="M8 17.5a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 12a3.6 3.6 0 01-.6 5.5H8z" fill="#fff" stroke="#1f2d3d" stroke-width="1.1" stroke-linejoin="round"/>
+      </svg>
+      Skyline
+    </div>
+    <div class="meta">
+      <span id="clockTime">--:--</span> · <span id="clockDate">—</span><br>
+      <span class="pill">Postgres</span><span class="pill">Redis</span><span class="pill">RabbitMQ</span><span class="pill" id="sessBadge">—</span>
+    </div>
+  </div>
+
+  <div class="searchwrap">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>
+      <input id="cityInput" placeholder="Search a city — Lisbon, Osaka, Reykjavík…" autocomplete="off">
+      <button id="searchBtn">Add city</button>
+    </div>
+    <div class="ac" id="ac"></div>
+  </div>
+
+  <div class="hero" id="hero">
+    <div class="hero-grid">
+      <div>
+        <h1 class="hero-city" id="heroCity">Loading…</h1>
+        <div class="hero-cond" id="heroCond">Fetching current conditions</div>
+        <div class="hero-temp" id="heroTemp">--<sup>°C</sup></div>
+        <div class="hero-feels" id="heroFeels"></div>
+      </div>
+      <div class="hero-scene" id="heroScene"></div>
+    </div>
+    <div class="hero-stats" id="heroStats"></div>
+  </div>
+
+  <div class="shead" style="margin-top:34px;">
+    <h2>Your cities</h2>
+    <div class="ctrls"><label>Tap a card to feature it</label></div>
+  </div>
+  <div class="cards" id="cards"></div>
+
+  <div class="panel">
+    <div class="shead" style="margin-left:0;">
+      <h2>Temperature over time</h2>
+      <div class="ctrls">
+        <label>Period</label>
+        <select id="periodSel">
+          <option value="24h">24 hours</option>
+          <option value="7d">7 days</option>
+          <option value="30d">30 days</option>
+        </select>
       </div>
     </div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="hint">Readings arrive through RabbitMQ and are stored by the history service. Your period choice is saved to your session.</div>
+  </div>
 
-      <script>
-      const btn = document.getElementById('btn');
-      const cityEl = document.getElementById('city');
-      const datalist = document.getElementById('cities');
-      const clearBtn = document.getElementById('clear');
-      const citiesRow = document.getElementById('citiesRow');
-      const tableBody = document.querySelector('#history-table tbody');
-      const loadMoreBtn = document.getElementById('loadMore');
-      const historyStatus = document.getElementById('historyStatus');
-      const historyCount = document.getElementById('historyCount');
-      const periodSelect = document.getElementById('periodSelect');
-      const cityFilterEl = document.getElementById('cityFilter');
-      const pageSizeSelect = document.getElementById('pageSizeSelect');
-      const sessionBadge = document.getElementById('sessionBadge');
+  <div class="panel">
+    <div class="shead" style="margin-left:0;">
+      <h2>Request log <span style="font-family:'IBM Plex Mono',monospace;font-size:0.74rem;color:var(--ink-faint);" id="totalLbl"></span></h2>
+      <div class="ctrls">
+        <label>City</label>
+        <select id="cityFilter"><option value="">All</option></select>
+        <label>Rows</label>
+        <select id="pageSel"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+        <button class="btn-ghost btn-clear" id="clearBtn">Clear log</button>
+      </div>
+    </div>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th></th><th>ID</th><th>Time</th><th>City</th><th>Temp</th><th>Humidity</th><th>NO₂</th><th>Status</th><th></th></tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="logEmpty" style="display:none;">Nothing logged yet. Add a city to start collecting readings.</div>
+    <div class="foot">
+      <span id="showing">Showing 0 of 0</span>
+      <button class="btn-ghost" id="moreBtn" style="display:none;">Load more</button>
+    </div>
+  </div>
 
-      const cardState = {};
+</div>
 
-      // ---- session-backed UI preferences (Redis via /api/session) ----
-      // Defaults used only until the session's saved state (if any) arrives.
-      let prefs = { period: '24h', cityFilter: '', pageSize: 20 };
-      let sessionReady = false; // guard: don't PUT preferences back before we've loaded them once
+<div class="toasts" id="toasts"></div>
 
-      // ---- history paging state ----
-      let historyRows = [];
-      let historyTotal = 0;
-      let chart = null;
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const cityInput=$('cityInput'), searchBtn=$('searchBtn'), ac=$('ac'), cards=$('cards'),
+        logBody=$('logBody'), logEmpty=$('logEmpty'), clearBtn=$('clearBtn'), toasts=$('toasts'),
+        periodSel=$('periodSel'), cityFilter=$('cityFilter'), pageSel=$('pageSel'),
+        sessBadge=$('sessBadge'), showing=$('showing'), totalLbl=$('totalLbl'), moreBtn=$('moreBtn');
 
-      function fmtNum(v, digits = 1) {
-        return (v === null || v === undefined) ? '—' : Number(v).toFixed(digits);
-      }
+  const state = {};
+  let prefs = { period:'24h', cityFilter:'', pageSize:20, featured:'' };
+  let ready=false, rows=[], total=0, chart=null;
 
-      function aqLevel(no2) {
-        if (no2 == null) return 'secondary';
-        if (no2 < 40) return 'success';
-        if (no2 < 100) return 'warning';
-        return 'danger';
-      }
+  const f = (v,d=1) => (v==null||Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
 
-      // ---------- session bootstrap ----------
-      async function loadSession() {
-        try {
-          const res = await fetch('/api/session');
-          const json = await res.json();
-          prefs = { ...prefs, ...(json.state || {}) };
-          sessionBadge.textContent = `session ${json.session_id.slice(0, 8)}…`;
-        } catch (e) {
-          console.error('session bootstrap failed', e);
-        }
-        periodSelect.value = prefs.period;
-        pageSizeSelect.value = String(prefs.pageSize);
-        // cityFilter select gets its saved value applied once cities are known (see renderCitiesRow)
-        sessionReady = true;
-      }
+  function toast(msg, good){
+    const el=document.createElement('div');
+    el.className='toast'+(good?' good':'');
+    el.textContent=msg; toasts.appendChild(el);
+    setTimeout(()=>el.remove(),4200);
+  }
 
-      async function savePrefs(patch) {
-        Object.assign(prefs, patch);
-        if (!sessionReady) return; // never write back defaults before the real state loaded
-        try {
-          await fetch('/api/session/state', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(patch),
-          });
-        } catch (e) {
-          console.error('savePrefs failed', e);
-        }
-      }
+  // ---- weather interpretation ----
+  const DESC = {0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Rime fog',
+    51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',
+    71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',80:'Rain showers',81:'Rain showers',
+    82:'Violent showers',85:'Snow showers',86:'Snow showers',95:'Thunderstorm',96:'Thunderstorm',99:'Thunderstorm'};
 
-      // ---------- city cards ----------
-      function cardHtml(name, reading) {
-        if (!reading) {
-          return `<div class="card card-weather p-3 text-white" style="background: linear-gradient(135deg,#9aa0a6,#6c7278);">
-            <div class="fw-semibold">${name}</div>
-            <div class="small">Waiting for first reading…</div>
-          </div>`;
-        }
-        const aq = reading.air_quality || {};
-        return `
-          <div class="card card-weather p-3 text-white" style="background: linear-gradient(135deg,#667eea,#764ba2);">
-            <div class="d-flex align-items-center justify-content-between">
-              <div>
-                <h2 class="display-6 fw-bold mb-0">${fmtNum(reading.temperature)}°C</h2>
-                <div>${name}</div>
-                <div class="small opacity-75">Feels like ${fmtNum(reading.apparent_temperature)}°C</div>
-              </div>
-              <div class="text-end small">
-                <div>Wind: ${fmtNum(reading.windspeed)} m/s</div>
-                <div>Dir: ${fmtNum(reading.winddirection, 0)}°</div>
-                <div>Humidity: ${fmtNum(reading.humidity, 0)}%</div>
-                <div>Pressure: ${fmtNum(reading.pressure, 0)} hPa</div>
-                <div>Precip: ${fmtNum(reading.precipitation, 1)} mm</div>
-              </div>
-            </div>
-            <hr class="opacity-25 my-2">
-            <div class="d-flex flex-wrap gap-2">
-              <span class="badge bg-${aqLevel(aq.nitrogen_dioxide)} aq-badge">NO₂ ${fmtNum(aq.nitrogen_dioxide, 0)} µg/m³</span>
-              <span class="badge bg-light text-dark aq-badge">PM2.5 ${fmtNum(aq.pm2_5, 0)}</span>
-              <span class="badge bg-light text-dark aq-badge">PM10 ${fmtNum(aq.pm10, 0)}</span>
-              <span class="badge bg-light text-dark aq-badge">O₃ ${fmtNum(aq.ozone, 0)}</span>
-              <span class="badge bg-light text-dark aq-badge">CO ${fmtNum(aq.carbon_monoxide, 0)}</span>
-            </div>
-          </div>`;
-      }
+  function kindOf(r){
+    if(!r) return 'cloudy';
+    const c=r.weathercode, day=r.is_day!==0;
+    if(c===0) return day?'clear-day':'clear-night';
+    if([1,2,3].includes(c)) return 'cloudy';
+    if([45,48].includes(c)) return 'fog';
+    if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(c)) return 'rain';
+    if([71,73,75,77,85,86].includes(c)) return 'snow';
+    if([95,96,99].includes(c)) return 'storm';
+    return day?'clear-day':'clear-night';
+  }
 
-      function renderCitiesRow() {
-        const names = Object.keys(cardState);
-        citiesRow.innerHTML = names.map(name =>
-          `<div class="col-md-6 col-lg-4">${cardHtml(name, cardState[name])}</div>`
-        ).join('');
+  // page background responds to the featured city's sky
+  const PALETTE = {
+    'clear-day':  ['#a8d8f0','#d5edfb','#fff6e8'],
+    'clear-night':['#8fa4c8','#c3cfe4','#f2eef4'],
+    cloudy:       ['#c2cedb','#dfe7ef','#f7f6f3'],
+    fog:          ['#cbd2d8','#e3e7ea','#f6f5f2'],
+    rain:         ['#a9bfd2','#cfdde8','#eff3f2'],
+    snow:         ['#c8d8e6','#e4eef6','#fbfcfd'],
+    storm:        ['#9aa3bd','#c4c9dc','#eeeaf0'],
+  };
+  function paintSky(kind){
+    const p = PALETTE[kind] || PALETTE.cloudy;
+    document.body.style.setProperty('--sky-top',p[0]);
+    document.body.style.setProperty('--sky-mid',p[1]);
+    document.body.style.setProperty('--sky-bot',p[2]);
+    document.body.style.background=`linear-gradient(180deg, ${p[0]} 0%, ${p[1]} 46%, ${p[2]} 100%)`;
+    document.body.style.backgroundAttachment='fixed';
+  }
 
-        // Keep the city-filter dropdown in sync with tracked cities, and
-        // (once) apply the saved filter from the session.
-        const prevValue = cityFilterEl.value;
-        cityFilterEl.innerHTML = '<option value="">All cities</option>' +
-          names.map(n => `<option value="${n}">${n}</option>`).join('');
-        const wanted = sessionReady && !cityFilterEl.dataset.applied ? prefs.cityFilter : prevValue;
-        if (names.includes(wanted) || wanted === '') {
-          cityFilterEl.value = wanted;
-        }
-        cityFilterEl.dataset.applied = '1';
-      }
+  function glyph(kind,size){
+    const s=size||1;
+    const sun='#e8a33d', moon='#7d8db0', cl='#ffffff', clS='#b8c6d6', rn='#6da8c9', sw='#a9c8dd', bolt='#e8c53d';
+    if(kind==='clear-day') return `<circle cx="12" cy="12" r="5" fill="${sun}"/><g stroke="${sun}" stroke-width="1.7" stroke-linecap="round"><path d="M12 2.4v2.8M12 18.8v2.8M2.4 12h2.8M18.8 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M5.2 18.8l2-2M16.8 7.2l2-2"/></g>`;
+    if(kind==='clear-night') return `<path d="M20 14.6A8.2 8.2 0 119.6 3.4 6.4 6.4 0 0020 14.6z" fill="${moon}"/>`;
+    if(kind==='cloudy') return `<circle cx="9" cy="8.5" r="3.6" fill="${sun}"/><path d="M8 18.5a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 13a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1" stroke-linejoin="round"/>`;
+    if(kind==='fog') return `<path d="M8 15a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 9.5a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1"/><g stroke="${clS}" stroke-width="1.5" stroke-linecap="round"><path d="M5 18h14M7 21h10"/></g>`;
+    if(kind==='rain') return `<path d="M8 14a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 8.5a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1"/><g stroke="${rn}" stroke-width="1.8" stroke-linecap="round"><path d="M9 17l-1 3.4M13 17l-1 3.4M17 17l-1 3.4"/></g>`;
+    if(kind==='snow') return `<path d="M8 13.5a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 8a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1"/><g fill="${sw}"><circle cx="9" cy="18" r="1.4"/><circle cx="13" cy="20" r="1.4"/><circle cx="17" cy="18" r="1.4"/></g>`;
+    if(kind==='storm') return `<path d="M8 13a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 7.5a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1"/><polygon points="13.5,13 9.5,19.5 12.5,19.5 10.5,23.5 16.5,16 13.5,16" fill="${bolt}"/>`;
+    return '';
+  }
 
+  // big animated hero scene
+  function heroScene(kind){
+    const anim = `<style>
+      @keyframes hfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+      @keyframes hspin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+      @keyframes hdrop{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(26px);opacity:0}}
+      @keyframes hflash{0%,90%,100%{opacity:0}92%,96%{opacity:1}}
+      .hf{animation:hfloat 5s ease-in-out infinite;transform-origin:center}
+      .hs{animation:hspin 44s linear infinite;transform-origin:64px 56px}
+      .hd{animation:hdrop 1.3s linear infinite}
+      .hb{animation:hflash 3.4s ease-in-out infinite}
+    </style>`;
+    if(kind==='clear-day') return `<svg viewBox="0 0 128 128">${anim}<g class="hs"><g stroke="#e8a33d" stroke-width="4" stroke-linecap="round"><path d="M64 12v14M64 86v14M12 56h14M102 56h14M27 19l10 10M91 83l10 10M27 93l10-10M91 29l10-10"/></g></g><circle cx="64" cy="56" r="24" fill="#efb45c"/><circle cx="57" cy="49" r="8" fill="#f7d18f" opacity=".55"/></svg>`;
+    if(kind==='clear-night') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M92 74a34 34 0 11-42-46 27 27 0 0042 46z" fill="#8b9cc0"/></g><g fill="#fff"><circle cx="26" cy="26" r="2.2"/><circle cx="102" cy="34" r="1.8"/><circle cx="40" cy="98" r="1.6"/><circle cx="96" cy="94" r="2"/></g></svg>`;
+    if(kind==='cloudy') return `<svg viewBox="0 0 128 128">${anim}<circle cx="46" cy="42" r="18" fill="#efb45c"/><g class="hf"><path d="M40 90a18 18 0 011.8-35.8A22 22 0 0182 62a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5" stroke-linejoin="round"/></g></svg>`;
+    if(kind==='fog') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 72a18 18 0 011.8-35.8A22 22 0 0182 44a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5"/></g><g stroke="#c3d1e0" stroke-width="4" stroke-linecap="round" opacity=".8"><path d="M26 88h76M36 102h56M30 116h68"/></g></svg>`;
+    if(kind==='rain') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 70a18 18 0 011.8-35.8A22 22 0 0182 42a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5"/></g><g stroke="#6da8c9" stroke-width="4" stroke-linecap="round">${[0,1,2,3].map(i=>`<path class="hd" style="animation-delay:${i*0.22}s" d="M${44+i*13} 82v9"/>`).join('')}</g></svg>`;
+    if(kind==='snow') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 68a18 18 0 011.8-35.8A22 22 0 0182 40a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5"/></g><g fill="#a9c8dd">${[0,1,2,3].map(i=>`<circle class="hd" style="animation-delay:${i*0.34}s" cx="${45+i*13}" cy="84" r="4"/>`).join('')}</g></svg>`;
+    if(kind==='storm') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 66a18 18 0 011.8-35.8A22 22 0 0182 38a16 16 0 01-2.6 28H40z" fill="#eef0f6" stroke="#b0b8cc" stroke-width="2.5"/></g><polygon class="hb" points="66,70 50,98 62,98 54,120 80,88 66,88" fill="#e8c53d"/><g stroke="#6da8c9" stroke-width="3.5" stroke-linecap="round"><path class="hd" d="M42 78v8"/><path class="hd" style="animation-delay:.4s" d="M88 78v8"/></g></svg>`;
+    return '';
+  }
 
-      async function refreshTrackedCities() {
-        try {
-          const res = await fetch('/api/cities');
-          if (!res.ok) throw new Error(`backend returned ${res.status}`);
-          const json = await res.json();
-          const names = json.cities || [];
-          for (const name of names) {
-            if (!(name in cardState)) cardState[name] = null;
-          }
-          await Promise.all(names.map(async (name) => {
-            try {
-              const r = await fetch(`/api/latest?city=${encodeURIComponent(name)}`);
-              if (!r.ok) return;
-              const j = await r.json();
-              cardState[name] = j.payload;
-            } catch (e) { /* keep previous state */ }
-          }));
-          renderCitiesRow();
-        } catch (e) {
-          console.error('refreshTrackedCities failed', e);
-        }
-      }
+  // ---- session ----
+  async function loadSession(){
+    try{
+      const r=await fetch('/api/session'); const j=await r.json();
+      prefs={...prefs,...(j.state||{})};
+      sessBadge.textContent=j.session_id.slice(0,6);
+    }catch(e){ console.error('session',e); }
+    periodSel.value=prefs.period; pageSel.value=String(prefs.pageSize);
+    ready=true;
+  }
+  async function save(patch){
+    Object.assign(prefs,patch);
+    if(!ready) return;
+    try{ await fetch('/api/session/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)}); }
+    catch(e){ console.error('save',e); }
+  }
 
+  // ---- hero ----
+  function renderHero(){
+    const names=Object.keys(state);
+    let name = prefs.featured && state[prefs.featured] ? prefs.featured
+             : names.find(n=>state[n]) || names[0];
+    if(!name){ return; }
+    const r=state[name];
+    $('heroCity').textContent=name;
+    if(!r){ $('heroCond').textContent='Waiting for the first reading'; return; }
+    const kind=kindOf(r);
+    paintSky(kind);
+    $('heroCond').textContent=DESC[r.weathercode] || 'Current conditions';
+    $('heroTemp').innerHTML=`${f(r.temperature,0)}<sup>°C</sup>`;
+    $('heroFeels').textContent=`Feels like ${f(r.apparent_temperature,0)}°C`;
+    $('heroScene').innerHTML=heroScene(kind);
+    const aq=r.air_quality||{};
+    $('heroStats').innerHTML=[
+      ['Wind',f(r.windspeed),'m/s'],['Humidity',f(r.humidity,0),'%'],
+      ['Pressure',f(r.pressure,0),'hPa'],['PM2.5',f(aq.pm2_5,0),'µg/m³'],
+    ].map(([k,v,u])=>`<div class="hstat"><div class="k">${k}</div><div class="v">${v} <span class="u">${u}</span></div></div>`).join('');
+  }
 
-      async function searchCity() {
-        const city = cityEl.value.trim();
-        if (!city) return;
-        btn.disabled = true;
-        btn.classList.add('loading');
-        try {
-          const res = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
-          if (!res.ok) throw new Error(`backend returned ${res.status}`);
-          const json = await res.json();
-          cardState[json.location_name || city] = json.payload;
-          renderCitiesRow();
-        } catch (e) {
-          console.error('search failed', e);
-          alert('Could not fetch that city: ' + e.message);
-        } finally {
-          btn.disabled = false;
-          btn.classList.remove('loading');
-        }
-        await resetHistory();
-        await loadChart();
-      }
+  function aqColor(v,lo,hi){ if(v==null) return '#c9d3dd'; return v<lo?'#4fa88b':v<hi?'#d99a3c':'#cf5757'; }
 
-      function getWeatherIcon(reading) {
-        if (!reading || reading.temperature == null) return '<i class="fa-solid fa-cloud fa-lg text-secondary"></i>';
-        const t = reading.temperature;
-        if (t >= 25) return '<i class="fa-solid fa-sun fa-lg text-warning"></i>';
-        if (t >= 10) return '<i class="fa-solid fa-cloud-sun fa-lg text-info"></i>';
-        return '<i class="fa-solid fa-snowflake fa-lg text-primary"></i>';
-      }
+  function renderCards(){
+    const names=Object.keys(state);
+    cards.innerHTML=names.map((name,i)=>{
+      const r=state[name];
+      if(!r) return `<div class="card waiting" style="animation-delay:${i*45}ms"><span class="dot"></span>${name}</div>`;
+      const kind=kindOf(r), aq=r.air_quality||{};
+      const active = name===(prefs.featured||names.find(n=>state[n]));
+      const bars=[[aq.pm2_5,12,35],[aq.pm10,20,50],[aq.nitrogen_dioxide,40,100],[aq.ozone,100,160]]
+        .map(([v,lo,hi])=>`<span class="cbar"><i style="width:${v==null?0:Math.min(100,(v/hi)*100)}%;background:${aqColor(v,lo,hi)}"></i></span>`).join('');
+      return `<div class="card${active?' active':''}" data-city="${name}" style="animation-delay:${i*45}ms">
+        <svg class="cglyph" viewBox="0 0 24 24">${glyph(kind)}</svg>
+        <div class="cname">${name}</div>
+        <div class="ctemp">${f(r.temperature,0)}<sup>°C</sup></div>
+        <div class="cdesc">${DESC[r.weathercode]||''}</div>
+        <div class="cbars">${bars}</div>
+      </div>`;
+    }).join('');
+    cards.querySelectorAll('.card[data-city]').forEach(el=>el.addEventListener('click',async()=>{
+      await save({featured:el.dataset.city});
+      renderHero(); renderCards();
+    }));
 
-      // ---------- history table (paged, filtered by city) ----------
-      function appendRows(rows) {
-        const filtered = prefs.cityFilter
-          ? rows.filter(r => (r.query_params?.city || '') === prefs.cityFilter)
-          : rows;
-        const frag = document.createDocumentFragment();
-        for (const r of filtered) {
-          const reading = r.response_body || {};
-          const aq = reading.air_quality || {};
-          const icon = getWeatherIcon(reading);
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td class="align-middle">${icon}</td>
-            <td>${r.id}</td>
-            <td>${new Date(r.event_time).toLocaleString()}</td>
-            <td>${r.query_params?.city || ''}</td>
-            <td>${fmtNum(reading.temperature)}°C</td>
-            <td>${fmtNum(reading.humidity, 0)}%</td>
-            <td>${fmtNum(aq.nitrogen_dioxide, 0)}</td>
-            <td>${JSON.stringify(r.query_params)}</td>
-            <td>${r.response_status} <button data-id="${r.id}" class="btn btn-sm btn-link text-danger del">Delete</button></td>`;
-          frag.appendChild(tr);
-        }
-        tableBody.appendChild(frag);
-        tableBody.querySelectorAll('.del').forEach(b => {
-          if (b.dataset.bound) return;
-          b.dataset.bound = '1';
-          b.addEventListener('click', async (e) => {
-            const id = e.currentTarget.getAttribute('data-id');
-            await fetch(`/api/history/${id}`, { method: 'DELETE' });
-            resetHistory();
-          });
-        });
-      }
+    const prev=cityFilter.value;
+    cityFilter.innerHTML='<option value="">All</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+    const want = ready && !cityFilter.dataset.set ? prefs.cityFilter : prev;
+    if(names.includes(want)||want==='') cityFilter.value=want;
+    cityFilter.dataset.set='1';
+  }
 
-      function updateHistoryStatus() {
-        historyStatus.textContent = `Showing ${historyRows.length} of ${historyTotal}`;
-        historyCount.textContent = `${historyTotal} total`;
-        loadMoreBtn.style.display = historyRows.length < historyTotal ? 'inline-block' : 'none';
-      }
+  // ---- data ----
+  async function refreshCities(){
+    try{
+      const res=await fetch('/api/cities'); if(!res.ok) throw 0;
+      const {cities=[]}=await res.json();
+      for(const n of cities) if(!(n in state)) state[n]=null;
+      await Promise.all(cities.map(async n=>{
+        try{ const r=await fetch(`/api/latest?city=${encodeURIComponent(n)}`);
+             if(r.ok){ const j=await r.json(); state[n]=j.payload; } }catch{}
+      }));
+      renderCards(); renderHero();
+    }catch(e){ console.error('cities',e); }
+  }
 
-      async function resetHistory() {
-        historyRows = [];
-        tableBody.innerHTML = '';
-        await loadHistoryPage();
-      }
+  async function addCity(){
+    const c=cityInput.value.trim(); if(!c) return;
+    searchBtn.disabled=true; searchBtn.textContent='Adding…';
+    try{
+      const res=await fetch(`/api/weather?city=${encodeURIComponent(c)}`);
+      if(!res.ok){ const b=await res.json().catch(()=>({})); throw new Error(b.detail||`HTTP ${res.status}`); }
+      const j=await res.json();
+      const nm=j.location_name||c;
+      state[nm]=j.payload;
+      await save({featured:nm});
+      renderCards(); renderHero();
+      toast(`Added ${nm}`,true);
+      cityInput.value=''; closeAc();
+      await resetLog(); await loadChart();
+    }catch(e){ toast(`Could not add "${c}" — ${e.message}`); }
+    finally{ searchBtn.disabled=false; searchBtn.textContent='Add city'; }
+  }
 
-      async function loadHistoryPage() {
-        const pageSize = Number(prefs.pageSize) || 20;
-        try {
-          const [countRes, pageRes] = await Promise.all([
-            fetch('/api/history/count'),
-            fetch(`/api/history/recent?limit=${pageSize}&offset=${historyRows.length}`)
-          ]);
-          if (countRes.ok) {
-            const countJson = await countRes.json();
-            historyTotal = countJson.total ?? historyTotal;
-          }
-          if (!pageRes.ok) throw new Error(`backend returned ${pageRes.status}`);
-          const rows = await pageRes.json();
-          historyRows = historyRows.concat(rows);
-          appendRows(rows);
-          updateHistoryStatus();
-        } catch (e) {
-          console.error('history fetch', e);
-        }
-      }
+  function renderLog(){
+    if(!rows.length){ logBody.innerHTML=''; logEmpty.style.display='block'; return; }
+    logEmpty.style.display='none';
+    logBody.innerHTML=rows.map(r=>{
+      const b=r.response_body||{}, aq=b.air_quality||{}, ok=r.response_status&&r.response_status<400;
+      return `<tr>
+        <td><svg class="tglyph" viewBox="0 0 24 24">${glyph(kindOf(b))}</svg></td>
+        <td>#${r.id}</td>
+        <td>${new Date(r.event_time).toLocaleString()}</td>
+        <td>${(r.query_params&&r.query_params.city)||'—'}</td>
+        <td>${f(b.temperature)}°C</td>
+        <td>${f(b.humidity,0)}%</td>
+        <td>${f(aq.nitrogen_dioxide,0)}</td>
+        <td class="${ok?'ok':'err'}">${r.response_status??'—'}</td>
+        <td><button class="del" data-id="${r.id}">Delete</button></td>
+      </tr>`;
+    }).join('');
+    logBody.querySelectorAll('.del').forEach(b=>b.addEventListener('click',async e=>{
+      const id=e.currentTarget.dataset.id;
+      try{ await fetch(`/api/history/${id}`,{method:'DELETE'}); toast(`Deleted #${id}`,true); resetLog(); }
+      catch{ toast('Could not delete that entry'); }
+    }));
+  }
 
-      loadMoreBtn.addEventListener('click', () => {
-        loadMoreBtn.disabled = true;
-        loadHistoryPage().finally(() => { loadMoreBtn.disabled = false; });
+  function updateFoot(){
+    showing.textContent=`Showing ${rows.length} of ${total}`;
+    totalLbl.textContent=`${total} total`;
+    moreBtn.style.display = rows.length<total ? 'inline-block' : 'none';
+  }
+
+  async function resetLog(){ rows=[]; await loadPage(); }
+
+  async function loadPage(){
+    const size=Number(prefs.pageSize)||20;
+    try{
+      const [cRes,pRes]=await Promise.all([
+        fetch('/api/history/count'),
+        fetch(`/api/history/recent?limit=${size}&offset=${rows.length}`)
+      ]);
+      if(cRes.ok){ const c=await cRes.json(); total=c.total??total; }
+      if(!pRes.ok) throw 0;
+      let page=await pRes.json();
+      if(prefs.cityFilter) page=page.filter(r=>(r.query_params&&r.query_params.city)===prefs.cityFilter);
+      rows=rows.concat(page);
+      renderLog(); updateFoot();
+    }catch(e){ console.error('log',e); }
+  }
+
+  const SPAN={'24h':864e5,'7d':6048e5,'30d':2592e6};
+  async function loadChart(){
+    try{
+      const res=await fetch('/api/history/recent?limit=500&offset=0'); if(!res.ok) return;
+      const all=await res.json();
+      const cut=Date.now()-(SPAN[prefs.period]||SPAN['24h']);
+      const pts=all.filter(r=>new Date(r.event_time).getTime()>=cut)
+                   .filter(r=>(r.response_body||{}).temperature!=null)
+                   .sort((a,b)=>new Date(a.event_time)-new Date(b.event_time));
+      const ctx=$('chart').getContext('2d');
+      const grad=ctx.createLinearGradient(0,0,0,230);
+      grad.addColorStop(0,'rgba(224,112,90,0.32)'); grad.addColorStop(1,'rgba(224,112,90,0.02)');
+      if(chart) chart.destroy();
+      chart=new Chart(ctx,{
+        type:'line',
+        data:{ labels:pts.map(r=>new Date(r.event_time).toLocaleString()),
+               datasets:[{ data:pts.map(r=>r.response_body.temperature),
+                 borderColor:'#e0705a', backgroundColor:grad, borderWidth:2.4,
+                 tension:.38, fill:true, pointRadius:pts.length>50?0:3,
+                 pointBackgroundColor:'#fff', pointBorderColor:'#e0705a', pointBorderWidth:2 }] },
+        options:{ responsive:true, maintainAspectRatio:false,
+          scales:{ x:{ display:pts.length<=40, ticks:{color:'#8b9aad',font:{size:10}}, grid:{display:false} },
+                   y:{ ticks:{color:'#8b9aad',font:{size:11},callback:v=>v+'°'}, grid:{color:'rgba(255,255,255,0.7)'}, border:{display:false} } },
+          plugins:{ legend:{display:false},
+            tooltip:{ backgroundColor:'rgba(255,255,255,0.95)', titleColor:'#1f2d3d', bodyColor:'#1f2d3d',
+                      borderColor:'rgba(224,112,90,0.4)', borderWidth:1, padding:10, displayColors:false,
+                      callbacks:{ label:c=>` ${c.parsed.y}°C` } } } }
       });
+    }catch(e){ console.error('chart',e); }
+  }
 
-      // ---------- temperature chart ----------
-      const PERIOD_MS = { '24h': 24 * 3600e3, '7d': 7 * 24 * 3600e3, '30d': 30 * 24 * 3600e3 };
+  // ---- events ----
+  moreBtn.addEventListener('click',()=>{ moreBtn.disabled=true; loadPage().finally(()=>moreBtn.disabled=false); });
+  periodSel.addEventListener('change',async()=>{ await save({period:periodSel.value}); loadChart(); });
+  cityFilter.addEventListener('change',async()=>{ await save({cityFilter:cityFilter.value}); resetLog(); });
+  pageSel.addEventListener('change',async()=>{ await save({pageSize:Number(pageSel.value)}); resetLog(); });
+  searchBtn.addEventListener('click',addCity);
+  clearBtn.addEventListener('click',async()=>{
+    if(!confirm('Clear the whole request log?')) return;
+    try{ await fetch('/api/history/clear',{method:'DELETE'}); toast('Log cleared',true); resetLog(); loadChart(); }
+    catch{ toast('Could not clear the log'); }
+  });
 
-      async function loadChart() {
-        try {
-          const res = await fetch('/api/history/recent?limit=500&offset=0');
-          if (!res.ok) return;
-          const rows = await res.json();
-          const cutoff = Date.now() - (PERIOD_MS[prefs.period] || PERIOD_MS['24h']);
-          const points = rows
-            .filter(r => new Date(r.event_time).getTime() >= cutoff)
-            .filter(r => (r.response_body || {}).temperature != null)
-            .sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+  let acT=null, acItems=[], acI=-1;
+  function closeAc(){ ac.classList.remove('open'); ac.innerHTML=''; acItems=[]; acI=-1; }
+  function drawAc(){ ac.innerHTML=acItems.map((l,i)=>`<div class="${i===acI?'on':''}" data-i="${i}">${l}</div>`).join('');
+                     ac.classList.toggle('open',acItems.length>0); }
+  cityInput.addEventListener('input',()=>{
+    clearTimeout(acT); const q=cityInput.value.trim(); if(!q){ closeAc(); return; }
+    acT=setTimeout(async()=>{
+      try{ const r=await fetch(`/api/geocode?q=${encodeURIComponent(q)}`); const j=await r.json();
+           acItems=(j.results||[]).map(x=>`${x.name}${x.country?', '+x.country:''}`); acI=-1; drawAc(); }
+      catch{ closeAc(); }
+    },280);
+  });
+  cityInput.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ addCity(); return; }
+    if(!acItems.length) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); acI=Math.min(acI+1,acItems.length-1); drawAc(); }
+    if(e.key==='ArrowUp'){ e.preventDefault(); acI=Math.max(acI-1,0); drawAc(); }
+    if(e.key==='Escape') closeAc();
+  });
+  ac.addEventListener('click',e=>{
+    const d=e.target.closest('[data-i]'); if(!d) return;
+    cityInput.value=acItems[+d.dataset.i].split(',')[0]; closeAc(); addCity();
+  });
+  document.addEventListener('click',e=>{ if(!e.target.closest('.searchwrap')) closeAc(); });
 
-          const labels = points.map(r => new Date(r.event_time).toLocaleString());
-          const data = points.map(r => r.response_body.temperature);
+  function tick(){
+    const n=new Date();
+    $('clockTime').textContent=n.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    $('clockDate').textContent=n.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
+  }
+  tick(); setInterval(tick,30000);
 
-          const ctx = document.getElementById('tempChart').getContext('2d');
-          if (chart) chart.destroy();
-          chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-              labels,
-              datasets: [{
-                label: 'Temperature (°C)',
-                data,
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102,126,234,0.15)',
-                tension: 0.25,
-                fill: true,
-                pointRadius: points.length > 60 ? 0 : 2,
-              }],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: { x: { display: points.length <= 40 }, y: { title: { display: true, text: '°C' } } },
-              plugins: { legend: { display: false } },
-            },
-          });
-        } catch (e) {
-          console.error('chart load failed', e);
-        }
-      }
-
-      let acTimer = null;
-      cityEl.addEventListener('input', () => {
-        clearTimeout(acTimer);
-        const q = cityEl.value.trim();
-        if (!q) return;
-        acTimer = setTimeout(async () => {
-            try {
-              const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-              const j = await res.json();
-              datalist.innerHTML = '';
-              (j.results || []).forEach(r => {
-                const opt = document.createElement('option');
-                opt.value = `${r.name}${r.country ? ', ' + r.country : ''}`;
-                datalist.appendChild(opt);
-              });
-            } catch (e) {
-              // ignore
-            }
-          }, 300);
-      });
-
-      clearBtn.addEventListener('click', async () => {
-        if (!confirm('Clear all history?')) return;
-        await fetch('/api/history/clear', { method: 'DELETE' });
-        resetHistory();
-        loadChart();
-      });
-
-      periodSelect.addEventListener('change', async () => {
-        await savePrefs({ period: periodSelect.value });
-        loadChart();
-      });
-
-      cityFilterEl.addEventListener('change', async () => {
-        await savePrefs({ cityFilter: cityFilterEl.value });
-        resetHistory();
-      });
-
-      pageSizeSelect.addEventListener('change', async () => {
-        await savePrefs({ pageSize: Number(pageSizeSelect.value) });
-        resetHistory();
-      });
-
-      btn.addEventListener('click', searchCity);
-      cityEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchCity(); });
-
-      (async () => {
-        await loadSession();
-        await refreshTrackedCities();
-        await resetHistory();
-        await loadChart();
-      })();
-
-      setInterval(refreshTrackedCities, 3600000);
-    </script>
-  </body>
+  (async()=>{ await loadSession(); await refreshCities(); await resetLog(); await loadChart(); })();
+  setInterval(refreshCities,15000);
+})();
+</script>
+</body>
 </html>
