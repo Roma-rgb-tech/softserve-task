@@ -13,7 +13,7 @@ SSH_PORTS = {
 }
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
-REPO_BRANCH = "feature/weather-dashboard"
+REPO_BRANCH = "dev/redis"
 
 RABBITMQ_USER = "app"
 RABBITMQ_PASS = "example"
