@@ -1,5 +1,15 @@
+# ---------------------------------------------------------------------------
+# Everything about the machines lives in one dictionary. Adding a fifth VM
+# means adding one entry here — no new config block, no copy-paste.
+# ---------------------------------------------------------------------------
+
+# Your home network. Change these two to match your router, then every VM
+# gets a real address on your LAN and is reachable from your phone/laptop.
+#   BRIDGE_IFACE: the adapter carrying your Wi-Fi/Ethernet traffic.
+#                 Check with: route get default | grep interface
+#   LAN_PREFIX:   the FIRST THREE octets of your home subnet only.
 BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
-LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.0")
+LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
 REPO_BRANCH = "dev/redis"
@@ -7,6 +17,7 @@ REPO_BRANCH = "dev/redis"
 RABBITMQ_USER = "app"
 RABBITMQ_PASS = "example"
 
+# host octet -> IP, so service URLs below stay readable
 def lan(octet)
   "#{LAN_PREFIX}.#{octet}"
 end
@@ -16,23 +27,17 @@ NODES = {
     octet:    50,
     ssh_port: 2222,
     memory:   "1536",
+    # Infra VM: three off-the-shelf images, nothing built from our repo.
     clone:    false,
     run: ->(ip) { <<~SHELL }
       docker rm -f postgres 2>/dev/null || true
-      docker run -d --name postgres --restart unless-stopped --network host \\
-        -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=example \\
-        -e POSTGRES_DB=history_db -v pgdata:/var/lib/postgresql/data \\
-        postgres:15
+      docker run -d --name postgres --restart unless-stopped --network host -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=example -e POSTGRES_DB=history_db -v pgdata:/var/lib/postgresql/data postgres:15
 
       docker rm -f redis 2>/dev/null || true
-      docker run -d --name redis --restart unless-stopped --network host \\
-        redis:7-alpine
+      docker run -d --name redis --restart unless-stopped --network host redis:7-alpine
 
       docker rm -f rabbitmq 2>/dev/null || true
-      docker run -d --name rabbitmq --restart unless-stopped --network host \\
-        -e RABBITMQ_DEFAULT_USER=#{RABBITMQ_USER} \\
-        -e RABBITMQ_DEFAULT_PASS=#{RABBITMQ_PASS} \\
-        rabbitmq:3-management
+      docker run -d --name rabbitmq --restart unless-stopped --network host -e RABBITMQ_DEFAULT_USER=#{RABBITMQ_USER} -e RABBITMQ_DEFAULT_PASS=#{RABBITMQ_PASS} rabbitmq:3-management
     SHELL
   },
 
@@ -45,10 +50,7 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t history-service /opt/app/history-service
       docker rm -f history 2>/dev/null || true
-      docker run -d --name history --restart unless-stopped --network host \\
-        -e DATABASE_URL=postgresql://postgres:example@#{lan(50)}:5432/history_db \\
-        -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ \\
-        history-service
+      docker run -d --name history --restart unless-stopped --network host -e DATABASE_URL=postgresql://postgres:example@#{lan(50)}:5432/history_db -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ history-service
     SHELL
   },
 
@@ -61,15 +63,7 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t backend-service /opt/app/backend-service
       docker rm -f backend 2>/dev/null || true
-      docker run -d --name backend --restart unless-stopped --network host \\
-        -e HISTORY_BASE=http://#{lan(51)}:8001 \\
-        -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ \\
-        -e REDIS_URL=redis://#{lan(50)}:6379/0 \\
-        -e POLL_INTERVAL_SECONDS=1800 \\
-        -e MIN_RECORD_INTERVAL_SECONDS=600 \\
-        -e WATCHED_CITIES=Kyiv,Lviv \\
-        -e MAX_WATCHED_CITIES=8 \\
-        backend-service
+      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{lan(51)}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ -e REDIS_URL=redis://#{lan(50)}:6379/0 -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 -e WATCHED_CITIES=Kyiv,Lviv -e MAX_WATCHED_CITIES=8 backend-service
     SHELL
   },
 
@@ -82,13 +76,12 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t ui-service /opt/app/ui-service
       docker rm -f ui 2>/dev/null || true
-      docker run -d --name ui --restart unless-stopped --network host \\
-        -e BACKEND_HOST=#{lan(52)} \\
-        ui-service
+      docker run -d --name ui --restart unless-stopped --network host -e BACKEND_HOST=#{lan(52)} ui-service
     SHELL
   },
 }
 
+# /etc/hosts entries so the VMs can also address each other by name
 HOSTS_FILE = NODES.map { |name, c|
   "grep -q ' #{name}$' /etc/hosts || echo '#{lan(c[:octet])} #{name}' >> /etc/hosts"
 }.join("\n")
@@ -120,10 +113,10 @@ Vagrant.configure("2") do |config|
     config.vm.define name do |node|
       node.vm.hostname = name
 
-      node.vm.network "public_network",
-        bridge: BRIDGE_IFACE,
-        ip: ip,
-        netmask: "255.255.255.0"
+      # The qemu plugin only builds its second NIC from private_network;
+      # net_mode :vmnet_bridged is what puts that NIC on the real home LAN,
+      # so this address answers from any device on the router.
+      node.vm.network "private_network", ip: ip
 
       node.vm.provider "qemu" do |qe|
         qe.arch     = "aarch64"
@@ -132,7 +125,8 @@ Vagrant.configure("2") do |config|
         qe.memory   = cfg[:memory]
         qe.ssh_port = cfg[:ssh_port]
         qe.advanced_network = true
-        qe.net_mode = :vmnet_bridged
+        qe.net_mode         = :vmnet_bridged
+        qe.vmnet_interface  = BRIDGE_IFACE
       end
 
       node.vm.provision "shell", inline: HOSTS_FILE
