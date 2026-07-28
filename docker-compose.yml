@@ -10,30 +10,52 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: example
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
   history:
     build:
       context: ./history-service
     environment:
-      DATABASE_URL: postgres://postgres:example@postgres:5432/history_db
+      DATABASE_URL: postgresql://postgres:example@postgres:5432/history_db
+      RABBITMQ_URL: amqp://app:example@rabbitmq/
     depends_on:
       - postgres
+      - rabbitmq
 
   backend:
     build:
       context: ./backend-service
     environment:
       HISTORY_BASE: http://history:8001
+      RABBITMQ_URL: amqp://app:example@rabbitmq/
+      REDIS_URL: redis://redis:6379/0
       POLL_INTERVAL_SECONDS: "3600"
       WATCHED_CITIES: "Kyiv,Lviv"
       MAX_WATCHED_CITIES: "3600"
     depends_on:
       - history
+      - redis
+      - rabbitmq
     ports:
       - "8000:8000"
 
   ui:
     build:
       context: ./ui-service
+    environment:
+      BACKEND_HOST: backend
     depends_on:
       - backend
     ports:
