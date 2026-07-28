@@ -48,6 +48,12 @@ watched_cities: Dict[str, Dict[str, Any]] = {}
 # This is what GET /latest serves without calling Open-Meteo again.
 latest_cache: Dict[str, Dict[str, Any]] = {}
 
+# Minimum gap between two recorded readings for the same city. Guards against
+# duplicate history rows when the poller and a fresh city registration land
+# close together.
+MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "600"))
+last_recorded_at: Dict[str, datetime] = {}
+
 _poll_task: Optional[asyncio.Task] = None
 
 # Open-Meteo's newer "current=" parameter (as opposed to the older
@@ -180,20 +186,35 @@ def register_city(name: str, lat: float, lon: float):
                 break
 
 
+async def poll_one_city(name: str):
+    """Fetch + record one city, respecting MIN_RECORD_INTERVAL_SECONDS so we
+    never write two rows for the same city within a short window. This is the
+    single place that calls the public weather API."""
+    coords = watched_cities.get(name)
+    if not coords:
+        return
+    last = last_recorded_at.get(name)
+    now = datetime.utcnow()
+    if last and (now - last).total_seconds() < MIN_RECORD_INTERVAL_SECONDS:
+        return
+    try:
+        reading = await fetch_reading(coords["latitude"], coords["longitude"])
+        latest_cache[name] = reading
+        last_recorded_at[name] = now
+        await log_reading(name, coords["latitude"], coords["longitude"],
+                           reading, client_ip="backend-poller")
+    except Exception:
+        pass
+
+
 async def poll_watched_cities():
     """Background task: re-fetches every watched city once per
     POLL_INTERVAL_SECONDS, on the backend's own clock. Runs regardless of
     whether anyone has the UI open, and is the only thing that decides
     *when* the public APIs get called."""
     while True:
-        for name, coords in list(watched_cities.items()):
-            try:
-                reading = await fetch_reading(coords["latitude"], coords["longitude"])
-                latest_cache[name] = reading
-                await log_reading(name, coords["latitude"], coords["longitude"],
-                                   reading, client_ip="backend-poller")
-            except Exception:
-                pass
+        for name in list(watched_cities.keys()):
+            await poll_one_city(name)
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
@@ -301,39 +322,32 @@ async def geocode_proxy(q: str):
             raise HTTPException(status_code=502, detail=str(e))
 
 
-@app.get("/weather")
-async def weather(request: Request,
-                  lat: Optional[float] = Query(None), lon: Optional[float] = Query(None),
-                  city: Optional[str] = Query(None)):
-    """On-demand fetch for one city. Also adds the city to the background
-    poll pool, so it keeps getting refreshed automatically afterwards."""
-    chosen = None
-    if city:
-        geo = await geocode_city(city)
-        if not geo:
-            raise HTTPException(status_code=404, detail=f"City not found: {city}")
-        lat = geo["latitude"]
-        lon = geo["longitude"]
-        chosen = geo.get("name") or city
-    if lat is None or lon is None:
-        raise HTTPException(status_code=400, detail="Provide either city or lat+lon")
+@app.post("/cities")
+async def add_city(city: str = Query(...)):
+    """Adds a city to the watched pool. This is a configuration change, not
+    a data fetch: no weather API call happens here. The background poller
+    owns every call to the public API and will pick this city up on its own
+    schedule (and immediately once, so the UI isn't blank for an hour).
 
-    name = chosen or city or f"{lat},{lon}"
-    reading = await fetch_reading(lat, lon)
-    latest_cache[name] = reading
-    register_city(name, lat, lon)
-    await log_reading(name, lat, lon, reading,
-                       client_ip=request.client.host if request.client else None)
+    Only geocoding runs synchronously, because we need coordinates before
+    the city can be polled at all."""
+    geo = await geocode_city(city)
+    if not geo:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    name = geo.get("name") or city
+    register_city(name, geo["latitude"], geo["longitude"])
+    # Kick the poller once for just this city so the first reading lands
+    # promptly; this runs on the backend's own clock, not on the UI's.
+    asyncio.create_task(poll_one_city(name))
+    return {"status": "watching", "location_name": name}
 
-    history_rows = []
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp_hist = await client.get(f"{HISTORY_BASE}/history/recent?limit=20")
-            history_rows = resp_hist.json()
-        except Exception:
-            pass
 
-    return {"source": "open-meteo", "location_name": name, "payload": reading, "history": history_rows}
+@app.delete("/cities")
+async def remove_city(city: str = Query(...)):
+    """Stops watching a city. Historical rows already stored stay in the DB."""
+    watched_cities.pop(city, None)
+    latest_cache.pop(city, None)
+    return {"status": "removed", "city": city}
 
 
 @app.get("/cities")
@@ -343,15 +357,34 @@ async def list_cities():
     return {"cities": list(watched_cities.keys())}
 
 
+async def latest_from_history(city: str) -> Optional[Dict[str, Any]]:
+    """Read the most recent stored reading for a city out of the History
+    service. Used so the UI still has data after a backend restart — no
+    external weather API call is involved."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{HISTORY_BASE}/history/recent?limit=200&offset=0")
+            for row in resp.json():
+                if (row.get("query_params") or {}).get("city") == city:
+                    return row.get("response_body")
+        except Exception:
+            pass
+    return None
+
+
 @app.get("/latest")
 async def latest(city: Optional[str] = Query(None)):
-    """Instant read of the last background poll — no external call made
-    here. Pass ?city=Name for one city, or omit it to get every tracked
-    city's latest reading in one response."""
+    """Serves stored data only — the in-memory cache first, then the history
+    DB. Nothing here ever reaches out to the public weather API, so a UI
+    refresh can never trigger an external fetch."""
     if city:
-        if city not in latest_cache:
-            raise HTTPException(status_code=503, detail=f"No reading collected yet for {city}")
-        return {"location_name": city, "payload": latest_cache[city]}
+        if city in latest_cache:
+            return {"location_name": city, "payload": latest_cache[city]}
+        stored = await latest_from_history(city)
+        if stored:
+            latest_cache[city] = stored
+            return {"location_name": city, "payload": stored}
+        raise HTTPException(status_code=503, detail=f"No reading collected yet for {city}")
 
     if not latest_cache:
         raise HTTPException(status_code=503, detail="No readings collected yet, try again shortly")

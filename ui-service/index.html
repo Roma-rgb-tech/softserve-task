@@ -492,20 +492,22 @@
     }catch(e){ console.error('cities',e); }
   }
 
+  // Adding a city only registers it for watching. The backend's own poller
+  // decides when to call the weather API — no UI action ever triggers a fetch.
   async function addCity(){
     const c=cityInput.value.trim(); if(!c) return;
     searchBtn.disabled=true; searchBtn.textContent='Adding…';
     try{
-      const res=await fetch(`/api/weather?city=${encodeURIComponent(c)}`);
+      const res=await fetch(`/api/cities?city=${encodeURIComponent(c)}`,{method:'POST'});
       if(!res.ok){ const b=await res.json().catch(()=>({})); throw new Error(b.detail||`HTTP ${res.status}`); }
       const j=await res.json();
       const nm=j.location_name||c;
-      state[nm]=j.payload;
+      if(!(nm in state)) state[nm]=null;
       await save({featured:nm});
       renderCards(); renderHero();
-      toast(`Added ${nm}`,true);
+      toast(`Now watching ${nm} — first reading arrives shortly`,true);
       cityInput.value=''; closeAc();
-      await resetLog(); await loadChart();
+      await refreshCities(); await resetLog(); await loadChart();
     }catch(e){ toast(`Could not add "${c}" — ${e.message}`); }
     finally{ searchBtn.disabled=false; searchBtn.textContent='Add city'; }
   }
