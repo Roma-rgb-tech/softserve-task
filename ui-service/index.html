@@ -6,19 +6,25 @@
     <title>Weather Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
       body { padding: 1.5rem; background: #f5f7fb; }
       .card-weather { min-height: 160px; }
       .loading { opacity: 0.6; }
       .aq-badge { font-size: 0.72rem; }
+      #chartWrap { height: 220px; }
+      .pref-bar select { min-width: 140px; }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="d-flex align-items-center mb-4">
-          <h1 class="me-auto">Weather Dashboard</h1>
-          <div class="text-muted">Demo: Open‑Meteo • FastAPI • Postgres</div>
+        <h1 class="me-auto">Weather Dashboard</h1>
+        <div class="text-muted small text-end">
+          Demo: Open‑Meteo • FastAPI • Postgres • Redis • RabbitMQ<br>
+          <span id="sessionBadge" class="text-muted"></span>
         </div>
+      </div>
 
       <div class="row g-3 mb-3">
         <div class="col-12">
@@ -35,13 +41,46 @@
         <!-- one card per tracked city, rendered by renderCities() -->
       </div>
 
+      <div class="row g-3 mb-4">
+        <div class="col-12">
+          <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2 pref-bar">
+              <h5 class="mb-0">Temperature trend</h5>
+              <div class="d-flex align-items-center gap-2">
+                <label class="small text-muted mb-0" for="periodSelect">Period</label>
+                <select id="periodSelect" class="form-select form-select-sm">
+                  <option value="24h">Last 24 hours</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                </select>
+              </div>
+            </div>
+            <div id="chartWrap"><canvas id="tempChart"></canvas></div>
+            <div class="text-muted small mt-1">Built from the history log for the selected period. Saved to your session.</div>
+          </div>
+        </div>
+      </div>
+
       <div class="row g-3">
         <div class="col-12">
           <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="mb-0">Recent requests</h5>
-              <div>
-                <button id="clear" class="btn btn-sm btn-danger me-2"><i class="fa-solid fa-trash"></i> Clear</button>
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2 pref-bar">
+              <h5 class="mb-0">
+                Recent requests
+                <span class="badge text-bg-secondary fw-normal" id="historyCount">0 total</span>
+              </h5>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <label class="small text-muted mb-0" for="cityFilter">City</label>
+                <select id="cityFilter" class="form-select form-select-sm">
+                  <option value="">All cities</option>
+                </select>
+                <label class="small text-muted mb-0" for="pageSizeSelect">Rows</label>
+                <select id="pageSizeSelect" class="form-select form-select-sm">
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <button id="clear" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Clear</button>
               </div>
             </div>
             <div class="table-responsive">
@@ -52,7 +91,13 @@
                 <tbody></tbody>
               </table>
             </div>
-            <div class="text-muted small">Refreshes automatically every 1 hour.</div>
+            <div class="d-flex align-items-center justify-content-between">
+              <div class="text-muted small" id="historyStatus">Showing 0 of 0</div>
+              <button id="loadMore" class="btn btn-sm btn-outline-secondary" style="display:none;">
+                Load more <i class="fa-solid fa-angles-down"></i>
+              </button>
+            </div>
+            <div class="text-muted small mt-1">Filter, row count, and chart period are saved to your session (Redis) and restored after refresh.</div>
           </div>
         </div>
       </div>
@@ -65,8 +110,25 @@
       const clearBtn = document.getElementById('clear');
       const citiesRow = document.getElementById('citiesRow');
       const tableBody = document.querySelector('#history-table tbody');
+      const loadMoreBtn = document.getElementById('loadMore');
+      const historyStatus = document.getElementById('historyStatus');
+      const historyCount = document.getElementById('historyCount');
+      const periodSelect = document.getElementById('periodSelect');
+      const cityFilterEl = document.getElementById('cityFilter');
+      const pageSizeSelect = document.getElementById('pageSizeSelect');
+      const sessionBadge = document.getElementById('sessionBadge');
 
       const cardState = {};
+
+      // ---- session-backed UI preferences (Redis via /api/session) ----
+      // Defaults used only until the session's saved state (if any) arrives.
+      let prefs = { period: '24h', cityFilter: '', pageSize: 20 };
+      let sessionReady = false; // guard: don't PUT preferences back before we've loaded them once
+
+      // ---- history paging state ----
+      let historyRows = [];
+      let historyTotal = 0;
+      let chart = null;
 
       function fmtNum(v, digits = 1) {
         return (v === null || v === undefined) ? '—' : Number(v).toFixed(digits);
@@ -79,6 +141,37 @@
         return 'danger';
       }
 
+      // ---------- session bootstrap ----------
+      async function loadSession() {
+        try {
+          const res = await fetch('/api/session');
+          const json = await res.json();
+          prefs = { ...prefs, ...(json.state || {}) };
+          sessionBadge.textContent = `session ${json.session_id.slice(0, 8)}…`;
+        } catch (e) {
+          console.error('session bootstrap failed', e);
+        }
+        periodSelect.value = prefs.period;
+        pageSizeSelect.value = String(prefs.pageSize);
+        // cityFilter select gets its saved value applied once cities are known (see renderCitiesRow)
+        sessionReady = true;
+      }
+
+      async function savePrefs(patch) {
+        Object.assign(prefs, patch);
+        if (!sessionReady) return; // never write back defaults before the real state loaded
+        try {
+          await fetch('/api/session/state', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+          });
+        } catch (e) {
+          console.error('savePrefs failed', e);
+        }
+      }
+
+      // ---------- city cards ----------
       function cardHtml(name, reading) {
         if (!reading) {
           return `<div class="card card-weather p-3 text-white" style="background: linear-gradient(135deg,#9aa0a6,#6c7278);">
@@ -119,6 +212,17 @@
         citiesRow.innerHTML = names.map(name =>
           `<div class="col-md-6 col-lg-4">${cardHtml(name, cardState[name])}</div>`
         ).join('');
+
+        // Keep the city-filter dropdown in sync with tracked cities, and
+        // (once) apply the saved filter from the session.
+        const prevValue = cityFilterEl.value;
+        cityFilterEl.innerHTML = '<option value="">All cities</option>' +
+          names.map(n => `<option value="${n}">${n}</option>`).join('');
+        const wanted = sessionReady && !cityFilterEl.dataset.applied ? prefs.cityFilter : prevValue;
+        if (names.includes(wanted) || wanted === '') {
+          cityFilterEl.value = wanted;
+        }
+        cityFilterEl.dataset.applied = '1';
       }
 
 
@@ -129,12 +233,12 @@
           const json = await res.json();
           const names = json.cities || [];
           for (const name of names) {
-            if (!(name in cardState)) cardState[name] = null; // placeholder until first reading arrives
+            if (!(name in cardState)) cardState[name] = null;
           }
           await Promise.all(names.map(async (name) => {
             try {
               const r = await fetch(`/api/latest?city=${encodeURIComponent(name)}`);
-              if (!r.ok) return; 
+              if (!r.ok) return;
               const j = await r.json();
               cardState[name] = j.payload;
             } catch (e) { /* keep previous state */ }
@@ -143,7 +247,6 @@
         } catch (e) {
           console.error('refreshTrackedCities failed', e);
         }
-        await fetchHistory();
       }
 
 
@@ -165,42 +268,8 @@
           btn.disabled = false;
           btn.classList.remove('loading');
         }
-        await fetchHistory();
-      }
-
-      async function fetchHistory() {
-        try {
-          const res = await fetch('/api/history/recent?limit=15');
-          if (!res.ok) throw new Error(`backend returned ${res.status}`);
-          const rows = await res.json();
-          const frag = document.createDocumentFragment();
-          for (const r of rows) {
-            const reading = r.response_body || {};
-            const aq = reading.air_quality || {};
-            const icon = getWeatherIcon(reading);
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td class="align-middle">${icon}</td>
-              <td>${r.id}</td>
-              <td>${new Date(r.event_time).toLocaleString()}</td>
-              <td>${r.query_params?.city || ''}</td>
-              <td>${fmtNum(reading.temperature)}°C</td>
-              <td>${fmtNum(reading.humidity, 0)}%</td>
-              <td>${fmtNum(aq.nitrogen_dioxide, 0)}</td>
-              <td>${JSON.stringify(r.query_params)}</td>
-              <td>${r.response_status} <button data-id="${r.id}" class="btn btn-sm btn-link text-danger del">Delete</button></td>`;
-            frag.appendChild(tr);
-          }
-          tableBody.innerHTML = '';
-          tableBody.appendChild(frag);
-          document.querySelectorAll('.del').forEach(b => b.addEventListener('click', async (e) => {
-            const id = e.currentTarget.getAttribute('data-id');
-            await fetch(`/api/history/${id}`, { method: 'DELETE' });
-            fetchHistory();
-          }));
-        } catch (e) {
-          console.error('history fetch', e);
-        }
+        await resetHistory();
+        await loadChart();
       }
 
       function getWeatherIcon(reading) {
@@ -209,6 +278,124 @@
         if (t >= 25) return '<i class="fa-solid fa-sun fa-lg text-warning"></i>';
         if (t >= 10) return '<i class="fa-solid fa-cloud-sun fa-lg text-info"></i>';
         return '<i class="fa-solid fa-snowflake fa-lg text-primary"></i>';
+      }
+
+      // ---------- history table (paged, filtered by city) ----------
+      function appendRows(rows) {
+        const filtered = prefs.cityFilter
+          ? rows.filter(r => (r.query_params?.city || '') === prefs.cityFilter)
+          : rows;
+        const frag = document.createDocumentFragment();
+        for (const r of filtered) {
+          const reading = r.response_body || {};
+          const aq = reading.air_quality || {};
+          const icon = getWeatherIcon(reading);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="align-middle">${icon}</td>
+            <td>${r.id}</td>
+            <td>${new Date(r.event_time).toLocaleString()}</td>
+            <td>${r.query_params?.city || ''}</td>
+            <td>${fmtNum(reading.temperature)}°C</td>
+            <td>${fmtNum(reading.humidity, 0)}%</td>
+            <td>${fmtNum(aq.nitrogen_dioxide, 0)}</td>
+            <td>${JSON.stringify(r.query_params)}</td>
+            <td>${r.response_status} <button data-id="${r.id}" class="btn btn-sm btn-link text-danger del">Delete</button></td>`;
+          frag.appendChild(tr);
+        }
+        tableBody.appendChild(frag);
+        tableBody.querySelectorAll('.del').forEach(b => {
+          if (b.dataset.bound) return;
+          b.dataset.bound = '1';
+          b.addEventListener('click', async (e) => {
+            const id = e.currentTarget.getAttribute('data-id');
+            await fetch(`/api/history/${id}`, { method: 'DELETE' });
+            resetHistory();
+          });
+        });
+      }
+
+      function updateHistoryStatus() {
+        historyStatus.textContent = `Showing ${historyRows.length} of ${historyTotal}`;
+        historyCount.textContent = `${historyTotal} total`;
+        loadMoreBtn.style.display = historyRows.length < historyTotal ? 'inline-block' : 'none';
+      }
+
+      async function resetHistory() {
+        historyRows = [];
+        tableBody.innerHTML = '';
+        await loadHistoryPage();
+      }
+
+      async function loadHistoryPage() {
+        const pageSize = Number(prefs.pageSize) || 20;
+        try {
+          const [countRes, pageRes] = await Promise.all([
+            fetch('/api/history/count'),
+            fetch(`/api/history/recent?limit=${pageSize}&offset=${historyRows.length}`)
+          ]);
+          if (countRes.ok) {
+            const countJson = await countRes.json();
+            historyTotal = countJson.total ?? historyTotal;
+          }
+          if (!pageRes.ok) throw new Error(`backend returned ${pageRes.status}`);
+          const rows = await pageRes.json();
+          historyRows = historyRows.concat(rows);
+          appendRows(rows);
+          updateHistoryStatus();
+        } catch (e) {
+          console.error('history fetch', e);
+        }
+      }
+
+      loadMoreBtn.addEventListener('click', () => {
+        loadMoreBtn.disabled = true;
+        loadHistoryPage().finally(() => { loadMoreBtn.disabled = false; });
+      });
+
+      // ---------- temperature chart ----------
+      const PERIOD_MS = { '24h': 24 * 3600e3, '7d': 7 * 24 * 3600e3, '30d': 30 * 24 * 3600e3 };
+
+      async function loadChart() {
+        try {
+          const res = await fetch('/api/history/recent?limit=500&offset=0');
+          if (!res.ok) return;
+          const rows = await res.json();
+          const cutoff = Date.now() - (PERIOD_MS[prefs.period] || PERIOD_MS['24h']);
+          const points = rows
+            .filter(r => new Date(r.event_time).getTime() >= cutoff)
+            .filter(r => (r.response_body || {}).temperature != null)
+            .sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+
+          const labels = points.map(r => new Date(r.event_time).toLocaleString());
+          const data = points.map(r => r.response_body.temperature);
+
+          const ctx = document.getElementById('tempChart').getContext('2d');
+          if (chart) chart.destroy();
+          chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Temperature (°C)',
+                data,
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102,126,234,0.15)',
+                tension: 0.25,
+                fill: true,
+                pointRadius: points.length > 60 ? 0 : 2,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: { x: { display: points.length <= 40 }, y: { title: { display: true, text: '°C' } } },
+              plugins: { legend: { display: false } },
+            },
+          });
+        } catch (e) {
+          console.error('chart load failed', e);
+        }
       }
 
       let acTimer = null;
@@ -235,14 +422,35 @@
       clearBtn.addEventListener('click', async () => {
         if (!confirm('Clear all history?')) return;
         await fetch('/api/history/clear', { method: 'DELETE' });
-        fetchHistory();
+        resetHistory();
+        loadChart();
+      });
+
+      periodSelect.addEventListener('change', async () => {
+        await savePrefs({ period: periodSelect.value });
+        loadChart();
+      });
+
+      cityFilterEl.addEventListener('change', async () => {
+        await savePrefs({ cityFilter: cityFilterEl.value });
+        resetHistory();
+      });
+
+      pageSizeSelect.addEventListener('change', async () => {
+        await savePrefs({ pageSize: Number(pageSizeSelect.value) });
+        resetHistory();
       });
 
       btn.addEventListener('click', searchCity);
       cityEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchCity(); });
 
+      (async () => {
+        await loadSession();
+        await refreshTrackedCities();
+        await resetHistory();
+        await loadChart();
+      })();
 
-      refreshTrackedCities();
       setInterval(refreshTrackedCities, 3600000);
     </script>
   </body>
