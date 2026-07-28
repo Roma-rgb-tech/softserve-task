@@ -1,3 +1,5 @@
 fastapi
 uvicorn[standard]
 httpx
+aio-pika
+redis>=4.2

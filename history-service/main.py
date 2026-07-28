@@ -1,11 +1,17 @@
 import os
 import json
+import asyncio
 from fastapi import FastAPI, HTTPException
 import asyncpg
+import aio_pika
 
 app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgres://postgres:example@postgres:5432/history_db")
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
+QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
 pool = None
+_rmq_connection = None
+_consumer_task = None
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS requests_history (
@@ -32,24 +38,10 @@ async def _init_connection(conn):
     )
 
 
-@app.on_event("startup")
-async def startup():
+async def persist_event(payload: dict):
+    """Single write path used by both the RabbitMQ consumer and the legacy
+    HTTP endpoint, so an event is stored identically either way."""
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, init=_init_connection)
-    async with pool.acquire() as conn:
-        await conn.execute(CREATE_TABLE_SQL)
-
-@app.on_event("shutdown")
-async def shutdown():
-    global pool
-    if pool:
-        await pool.close()
-
-@app.post("/history/events")
-async def receive_event(payload: dict):
-    global pool
-    if not pool:
-        raise HTTPException(status_code=500, detail="DB not initialized")
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO requests_history(event_time, path, client_ip, query_params, response_status, response_body) VALUES (now(), $1, $2, $3::jsonb, $4, $5::jsonb)",
@@ -59,20 +51,81 @@ async def receive_event(payload: dict):
             payload.get("response_status"),
             payload.get("response_body") or {}
         )
+
+
+async def consume_weather_events():
+    """Background consumer: this is the async replacement for the old
+    Backend -> History HTTP call. Backend now publishes to `weather.events`
+    instead of calling us directly; we pick messages up whenever we're
+    alive, so a restart on either side never loses an event — RabbitMQ
+    just holds the durable message until we come back."""
+    global _rmq_connection
+    while True:
+        try:
+            _rmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            async with _rmq_connection:
+                channel = await _rmq_connection.channel()
+                await channel.set_qos(prefetch_count=10)
+                queue = await channel.declare_queue(QUEUE_NAME, durable=True)
+                async with queue.iterator() as it:
+                    async for message in it:
+                        async with message.process():
+                            try:
+                                payload = json.loads(message.body.decode())
+                                await persist_event(payload)
+                            except Exception:
+                                # A malformed message shouldn't take the whole
+                                # consumer down; it's acked (via message.process())
+                                # and dropped, everything else keeps flowing.
+                                pass
+        except Exception:
+            # Broker not reachable yet (e.g. still booting) — back off and
+            # retry the connection itself, not each individual message.
+            await asyncio.sleep(5)
+
+
+@app.on_event("startup")
+async def startup():
+    global pool, _consumer_task
+    pool = await asyncpg.create_pool(DATABASE_URL, init=_init_connection)
+    async with pool.acquire() as conn:
+        await conn.execute(CREATE_TABLE_SQL)
+    _consumer_task = asyncio.create_task(consume_weather_events())
+
+@app.on_event("shutdown")
+async def shutdown():
+    global pool, _consumer_task
+    if _consumer_task:
+        _consumer_task.cancel()
+    if _rmq_connection:
+        await _rmq_connection.close()
+    if pool:
+        await pool.close()
+
+@app.post("/history/events")
+async def receive_event(payload: dict):
+    """Legacy direct-write endpoint. No longer called by Backend (it now
+    publishes to RabbitMQ instead) — kept only for manual testing/debugging
+    so you can POST a synthetic event without a broker running."""
+    global pool
+    if not pool:
+        raise HTTPException(status_code=500, detail="DB not initialized")
+    await persist_event(payload)
     return {"status": "ok"}
 
 
 @app.get("/history/recent")
-async def recent(limit: int = 20):
-    """Return recent history rows (most recent first)."""
+async def recent(limit: int = 20, offset: int = 0):
+    """Return recent history rows (most recent first), paged via limit/offset."""
     global pool
     if not pool:
         raise HTTPException(status_code=500, detail="DB not initialized")
     rows = []
     async with pool.acquire() as conn:
         recs = await conn.fetch(
-            "SELECT id, event_time, path, client_ip, query_params, response_status, response_body FROM requests_history ORDER BY id DESC LIMIT $1",
+            "SELECT id, event_time, path, client_ip, query_params, response_status, response_body FROM requests_history ORDER BY id DESC LIMIT $1 OFFSET $2",
             limit,
+            offset,
         )
         for r in recs:
             rows.append({
@@ -85,6 +138,17 @@ async def recent(limit: int = 20):
                 "response_body": r["response_body"],
             })
     return rows
+
+
+@app.get("/history/count")
+async def count():
+    """Total number of history rows, used by the UI to know when to stop paging."""
+    global pool
+    if not pool:
+        raise HTTPException(status_code=500, detail="DB not initialized")
+    async with pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM requests_history")
+    return {"total": total}
 
 
 @app.delete("/history/clear")

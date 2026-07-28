@@ -1,7 +1,11 @@
 import os
+import json
+import uuid
 import asyncio
-from fastapi import FastAPI, Query, Request, HTTPException
+from fastapi import FastAPI, Query, Request, Response, HTTPException
 import httpx
+import aio_pika
+import redis.asyncio as aioredis
 from typing import Any, Dict, Optional
 from datetime import datetime
 
@@ -10,6 +14,20 @@ HISTORY_BASE = os.getenv("HISTORY_BASE", "http://history:8001")
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 AIR_QUALITY_API = "https://air-quality-api.open-meteo.com/v1/air-quality"
 GEOCODE_API = "https://geocoding-api.open-meteo.com/v1/search"
+
+# RabbitMQ: this is the async replacement for the old direct HTTP call to
+# History. We publish here; History consumes from the same durable queue.
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
+QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
+_rmq_connection: Optional[aio_pika.RobustConnection] = None
+_rmq_channel: Optional[aio_pika.Channel] = None
+
+# Redis: purely for ephemeral UI session state (selected chart period,
+# filters, toggles) — never for business/weather data.
+REDIS_URL = os.getenv("REDIS_URL", "redis://postgres:6379/0")
+SESSION_COOKIE_NAME = "session_id"
+SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30)))  # 30 days
+redis_client: Optional[aioredis.Redis] = None
 
 # How often each watched city is re-polled, on the backend's own clock.
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "60"))
@@ -104,10 +122,29 @@ async def fetch_reading(lat: float, lon: float) -> Dict[str, Any]:
     }
 
 
+async def get_rmq_channel() -> Optional[aio_pika.Channel]:
+    """Lazily connect/reconnect to RabbitMQ and cache the channel. Returns
+    None if the broker is unreachable right now — callers treat that as a
+    skip-this-round, not a fatal error (matches the fire-and-forget contract
+    the old HTTP version had)."""
+    global _rmq_connection, _rmq_channel
+    if _rmq_channel and not _rmq_channel.is_closed:
+        return _rmq_channel
+    try:
+        _rmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
+        _rmq_channel = await _rmq_connection.channel()
+        await _rmq_channel.declare_queue(QUEUE_NAME, durable=True)
+        return _rmq_channel
+    except Exception:
+        return None
+
+
 async def log_reading(city_name: str, lat: float, lon: float, reading: Dict[str, Any],
                        client_ip: Optional[str] = None):
-    """Send one reading to the History service. Fire-and-forget: a failed
-    write here should never break the response to the caller."""
+    """Publish one reading to RabbitMQ instead of calling History directly.
+    This is the async path the mentors asked for: Fetcher (this service)
+    publishes, History consumes and persists whenever it's available —
+    fire-and-forget from our side, same as the old httpx call was."""
     event = {
         "event_time": datetime.utcnow().isoformat(),
         "path": "/weather",
@@ -116,11 +153,19 @@ async def log_reading(city_name: str, lat: float, lon: float, reading: Dict[str,
         "response_status": reading.get("weather_status", 200),
         "response_body": reading,
     }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            await client.post(f"{HISTORY_BASE}/history/events", json=event)
-        except Exception:
-            pass
+    try:
+        channel = await get_rmq_channel()
+        if not channel:
+            return
+        await channel.default_exchange.publish(
+            aio_pika.Message(
+                body=json.dumps(event).encode(),
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            ),
+            routing_key=QUEUE_NAME,
+        )
+    except Exception:
+        pass
 
 
 def register_city(name: str, lat: float, lon: float):
@@ -154,7 +199,8 @@ async def poll_watched_cities():
 
 @app.on_event("startup")
 async def start_background_poller():
-    global _poll_task
+    global _poll_task, redis_client
+    redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
     for name in DEFAULT_CITY_NAMES:
         geo = await geocode_city(name)
         if geo:
@@ -166,6 +212,80 @@ async def start_background_poller():
 async def stop_background_poller():
     if _poll_task:
         _poll_task.cancel()
+    if _rmq_connection:
+        await _rmq_connection.close()
+    if redis_client:
+        await redis_client.close()
+
+
+def _session_key(session_id: str) -> str:
+    return f"session:{session_id}"
+
+
+async def get_or_create_session_id(request: Request, response: Response) -> str:
+    """Reads the session cookie if present, otherwise mints a new session
+    (no auth involved — just an opaque id the browser holds onto). Every
+    call refreshes the cookie's max-age so an active browser tab keeps its
+    session alive; an abandoned one expires from Redis on its own."""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id:
+        session_id = uuid.uuid4().hex
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        session_id,
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return session_id
+
+
+@app.get("/session")
+async def session_bootstrap(request: Request, response: Response):
+    """Called once on UI load. Ensures a session cookie exists and returns
+    whatever UI state was previously saved for it (empty dict = defaults)."""
+    session_id = await get_or_create_session_id(request, response)
+    raw = await redis_client.get(_session_key(session_id))
+    state = json.loads(raw) if raw else {}
+    return {"session_id": session_id, "state": state}
+
+
+@app.get("/session/state")
+async def session_get_state(request: Request, response: Response):
+    session_id = await get_or_create_session_id(request, response)
+    raw = await redis_client.get(_session_key(session_id))
+    return json.loads(raw) if raw else {}
+
+
+@app.put("/session/state")
+async def session_put_state(request: Request, response: Response, patch: dict):
+    """Merges `patch` into the session's stored UI state (chart period,
+    filters, toggles — never business data) and refreshes its TTL."""
+    session_id = await get_or_create_session_id(request, response)
+    key = _session_key(session_id)
+    raw = await redis_client.get(key)
+    state = json.loads(raw) if raw else {}
+    state.update(patch)
+    await redis_client.set(key, json.dumps(state), ex=SESSION_TTL_SECONDS)
+    return state
+
+
+@app.delete("/session")
+async def session_clear(request: Request, response: Response):
+    """Drops the session's stored state and issues a fresh session id —
+    used by the UI's 'reset preferences' action."""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id:
+        await redis_client.delete(_session_key(session_id))
+    new_id = uuid.uuid4().hex
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        new_id,
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
+    return {"session_id": new_id, "state": {}}
 
 
 @app.get("/geocode")
@@ -244,9 +364,23 @@ async def latest(city: Optional[str] = Query(None)):
 
 
 @app.get("/history/recent")
-async def history_recent(limit: int = Query(20, ge=1, le=200)):
-    """Proxy endpoint to fetch recent history rows from the History service."""
-    url = f"{HISTORY_BASE}/history/recent?limit={limit}"
+async def history_recent(limit: int = Query(20, ge=1, le=1000), offset: int = Query(0, ge=0)):
+    """Proxy endpoint to fetch recent history rows from the History service, paged.
+    This stays synchronous HTTP — RabbitMQ is one-directional (write path only),
+    reads still go straight to History."""
+    url = f"{HISTORY_BASE}/history/recent?limit={limit}&offset={offset}"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(url)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+    return resp.json()
+
+
+@app.get("/history/count")
+async def history_count():
+    """Proxy endpoint returning the total number of history rows."""
+    url = f"{HISTORY_BASE}/history/count"
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             resp = await client.get(url)
