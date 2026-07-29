@@ -24,7 +24,7 @@ end
 
 NODES = {
   "postgres" => {
-    octet:    50,
+    octet:    200,
     ssh_port: 2222,
     memory:   "1536",
     # Infra VM: three off-the-shelf images, nothing built from our repo.
@@ -42,7 +42,7 @@ NODES = {
   },
 
   "history" => {
-    octet:    51,
+    octet:    201,
     ssh_port: 2223,
     memory:   "1536",
     clone:    true,
@@ -55,7 +55,7 @@ NODES = {
   },
 
   "backend" => {
-    octet:    52,
+    octet:    202,
     ssh_port: 2224,
     memory:   "1536",
     clone:    true,
@@ -68,7 +68,7 @@ NODES = {
   },
 
   "fetcher" => {
-    octet:    54,
+    octet:    203,
     ssh_port: 2226,
     memory:   "1024",
     clone:    true,
@@ -81,7 +81,7 @@ NODES = {
   },
 
   "ui" => {
-    octet:    53,
+    octet:    204,
     ssh_port: 2225,
     memory:   "1024",
     clone:    true,
