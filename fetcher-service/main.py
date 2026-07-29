@@ -30,10 +30,10 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
 QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
 
 # How often the whole watch list is swept.
-POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "60"))
+POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "3600"))
 # Never record two readings for the same city closer together than this,
 # regardless of how often the sweep runs.
-MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "60"))
+MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "600"))
 
 CURRENT_WEATHER_FIELDS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,"
