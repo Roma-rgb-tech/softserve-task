@@ -1,174 +1,271 @@
 # Weather microservices demo
 
-<img width="1676" height="891" alt="image" src="https://github.com/user-attachments/assets/3d11903a-e60e-41d3-bb78-36846b101255" />
+A small weather dashboard built from cooperating services: a UI, a backend/proxy, a
+history service, PostgreSQL for persistence, Redis for UI sessions, and RabbitMQ for
+asynchronous messaging between the backend and the history service.
 
-This repository implements a small Weather microservice demo using Docker Compose (with a Vagrant/VM alternative).
-It is designed to show a front-end service, a backend/orchestration service, a history persistence service, and a PostgreSQL database.
+Each service runs as a Docker container, and each container runs on its own Vagrant VM
+bridged onto the home LAN, so every machine has a real address you can reach from a
+phone or another laptop on the same router.
 
 ## Architecture
 
-The system is composed of four services:
-
-- `ui-service` — static UI served by nginx on port `8080`. Also reverse-proxies `/api/*` to the backend.
-- `backend-service` — FastAPI backend on port `8000` that handles city lookups and weather requests, and orchestrates calls to the public API and the history service.
-- `history-service` — FastAPI service on port `8001` that stores request events in PostgreSQL.
-- `postgres` — PostgreSQL database on port `5432`.
-
-### Service boundaries
-
-- The **UI** never calls the public weather API or the database directly. It only talks to the backend, through the `/api/*` path exposed by its own nginx.
-- The **Backend** is the single orchestration point: it is the only component that calls the public Open-Meteo APIs (weather, air quality, geocoding), and the only component that sends events to the History service. It also runs a background poller that refreshes a set of "watched" cities on its own clock (`POLL_INTERVAL_SECONDS`), independent of whether anyone has the UI open.
-- The **History service** owns persistence. It is the only component that talks to PostgreSQL, and it exposes its own endpoints for storing and reading history — the backend proxies to them rather than querying the database itself.
-- **PostgreSQL** is only ever reached through the History service in normal operation. It is exposed on `5432` in Docker Compose purely for local debugging (see [Database inspection](#database-inspection)).
-
-### Request flow
-
 ```
-UI → Backend → Open-Meteo (weather + air quality + geocoding)
-            → History service → PostgreSQL
+                    Open-Meteo (weather · air quality · geocoding)
+                                    ▲
+                                    │ only the poller calls it
+                                    │
+Browser ──▶ UI (nginx) ──▶ Backend ─┼──▶ Redis        (UI session state)
+                             │      │
+                             │      └──▶ RabbitMQ ──▶ History ──▶ PostgreSQL
+                             │            (async write path)
+                             └──────────── HTTP reads ──────────▶ History
 ```
 
-## Accessing the API
-
-There are two ways to reach the backend, and the URL path differs between them:
-
-| Access point | Base URL | Path prefix |
+| Service | Port | Role |
 |---|---|---|
-| Through the UI's nginx proxy | `http://localhost:8080` | `/api/*` (nginx strips `/api/` before forwarding) |
-| Directly against the backend container | `http://localhost:8000` | no prefix |
+| `ui-service` | 80 | Static dashboard served by nginx; reverse-proxies `/api/*` to the backend |
+| `backend-service` | 8000 | The only component that calls the public weather API; owns sessions and orchestration |
+| `history-service` | 8001 | Owns persistence; consumes from RabbitMQ and writes to PostgreSQL |
+| `postgres` | 5432 | Relational store for the request history |
+| `redis` | 6379 | Ephemeral UI session state (no user accounts, no business data) |
+| `rabbitmq` | 5672 / 15672 | Durable `weather.events` queue + management UI |
 
-Example — the same endpoint, both ways:
+### Rules the design follows
 
-```bash
-curl "http://localhost:8080/api/weather?city=Kyiv" | jq .
-curl "http://localhost:8000/weather?city=Kyiv" | jq .
-```
+**No UI action ever triggers a call to the public API.** Clicking around the dashboard
+only reads stored data. Adding a city is a *configuration* change (`POST /cities`): it
+registers the city in the watch pool, and the backend's own poller decides when to fetch.
+Geocoding is the single exception, because coordinates are needed before a city can be
+polled at all.
 
-The frontend itself always calls `/api/*` (never the backend port directly), so it works the same whether you open it via Docker Compose or Vagrant.
+**Writes are asynchronous, reads are synchronous.** The backend publishes each reading to
+the durable `weather.events` queue instead of calling History over HTTP. History consumes
+whenever it is alive — restart either side and RabbitMQ holds the message until the
+consumer comes back. Reads (`/history/recent`, `/history/count`) stay plain HTTP, since a
+queue is one-directional and RPC-over-AMQP would be overkill here.
 
-## Running locally (Docker)
+**Duplicate readings are suppressed.** `MIN_RECORD_INTERVAL_SECONDS` (default 600) means
+two rows for the same city can never land within ten minutes of each other, however often
+the poller runs or how many times a city is re-registered.
+
+**Redis holds UI preferences only.** Session state is the chart period, the city filter,
+the rows-per-page choice, and the featured city — never weather data. There is no
+authentication and no user management; the session is an opaque cookie id with a sliding
+30-day TTL.
+
+## What the UI does
+
+Open the dashboard and you get a live weather console. The page background is a gradient
+sky that repaints to match the featured city's real conditions and time of day — daytime
+blue, muted indigo at night, grey-blue for rain, darker violet for storms.
+
+**Hero panel.** The featured city shown large: temperature, "feels like", a written
+condition, and an animated scene that reflects the actual weather code — the sun rotates
+its rays, the moon drifts among stars, rain falls from a cloud, lightning flashes during a
+storm. Below it, four readouts: wind, humidity, pressure, PM2.5.
+
+**City cards.** One card per watched city, with temperature, condition, a weather glyph,
+and four air-quality bars (PM2.5, PM10, NO₂, O₃) coloured green/amber/red by threshold.
+Click any card to feature it — the hero and the page sky follow, and the choice is saved
+to your session.
+
+**Search.** Type a city and get autocomplete suggestions (arrow keys and Enter work).
+Selecting one registers the city for watching; the first reading arrives shortly after,
+once the poller picks it up.
+
+**Temperature chart.** A trend line built from the stored history, with a period selector
+(24 hours / 7 days / 30 days). The choice persists across refreshes.
+
+**Request log.** Every reading the backend has recorded, newest first: id, timestamp,
+city, temperature, humidity, NO₂, and HTTP status. Filter by city, choose 20/50/100 rows,
+page through the whole log with "Load more", delete a single row, or clear everything.
+
+**Session persistence.** Change the chart period, the filter, the row count, or the
+featured city, then refresh the page — everything comes back exactly as you left it,
+because the state lives in Redis keyed by your session cookie. Open the same URL in a
+private window and you get an independent session with default settings.
+
+## Running with Vagrant
 
 ### Prerequisites
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 
-Start the full stack:
+- [Vagrant](https://www.vagrantup.com/)
+- The `vagrant-qemu` plugin: `vagrant plugin install vagrant-qemu`
+- QEMU: `brew install qemu`
+
+### Configure your network first
+
+The VMs take static addresses on your home subnet, so two values must match your router:
+
+```ruby
+BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")       # your active adapter
+LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")    # FIRST THREE octets only
+```
+
+Find them with:
 
 ```bash
-docker-compose up --build -d
+route get default | grep interface   # → the adapter, e.g. en0
+ipconfig getifaddr en0               # → e.g. 192.168.88.15, so prefix is 192.168.88
 ```
 
-Open the frontend at:
-
-```text
-http://localhost:8080
-```
-
-Stop and remove containers and volumes:
-
-```bash
-docker-compose down -v
-```
-
-## Running with Vagrant (Alternative)
-
-If you want to run the stack inside virtual machines using Vagrant (configured for ARM64/Apple Silicon via QEMU or VMware), follow these steps:
-
-### Prerequisites
-- Install [Vagrant](https://www.vagrantup.com/)
-- Install a compatible provider (e.g., `vagrant-qemu` or VMware Fusion)
+Make sure the octets used below (`.50`–`.53`) fall **outside your router's DHCP pool**,
+or you will eventually get an address conflict.
 
 ### Start the cluster
-Bring up all the virtual machines defined in the `Vagrantfile`:
 
 ```bash
-vagrant up --provider=qemu
+sudo -E OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES vagrant up --provider=qemu
+```
+
+Two things about that command:
+
+- `sudo` is required because macOS's `vmnet` framework (which provides bridged
+  networking) needs elevated privileges.
+- `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` works around a crash where the Objective-C
+  runtime — pulled in by `vmnet` — refuses to continue after QEMU's `-daemonize` calls
+  `fork()`.
+
+Override the network per-run if you need to:
+
+```bash
+LAN_PREFIX=192.168.1 VAGRANT_BRIDGE=en1 sudo -E OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES vagrant up --provider=qemu
 ```
 
 ### VM layout
 
-Each service runs in its own VM with a static, reachable IP:
+All four machines are bridged onto the LAN, so these addresses answer from any device on
+the router — not just from the host.
 
-| VM | Hostname | IP | SSH port |
+| VM | Containers | IP | SSH port |
 |---|---|---|---|
-| PostgreSQL | `postgres` | `192.168.105.10` | `2222` |
-| History service | `history` | `192.168.105.11` | `2223` |
-| Backend service | `backend` | `192.168.105.12` | `2224` |
-| UI | `ui` | `192.168.105.13` | `2225` |
+| `postgres` | postgres, redis, rabbitmq | `<prefix>.50` | 2222 |
+| `history` | history-service | `<prefix>.51` | 2223 |
+| `backend` | backend-service | `<prefix>.52` | 2224 |
+| `ui` | ui-service | `<prefix>.53` | 2225 |
 
-Open the frontend at `http://192.168.105.13`. SSH into a VM with `vagrant ssh <name>` (or `ssh -p <port> vagrant@127.0.0.1`).
+Open the dashboard at `http://<prefix>.53` — including from your phone.
 
-### Check status and stop
-
-Check the current state of the virtual machines:
+### Everyday commands
 
 ```bash
-vagrant status
+sudo -E vagrant status
+sudo -E vagrant ssh backend -- 'docker ps'
+sudo -E vagrant ssh history -- 'docker logs history --tail 20'
+sudo -E vagrant provision ui        # rebuild one service after a push
+sudo -E vagrant destroy -f
 ```
 
-Stop and destroy the virtual machines when you are done:
+`sudo` is needed for these too: the QEMU processes belong to root, so an unprivileged
+`vagrant` cannot even read their state.
+
+### Adding a fifth VM
+
+Every machine is generated from one dictionary, so adding a service means adding an entry
+to `NODES` in the `Vagrantfile` — a new octet, an SSH port, and the `docker run` line.
+No new config block, no copy-paste.
+
+> The provisioner clones this repo from GitHub (`REPO_BRANCH`), not from your working
+> copy. Push your changes before running `vagrant provision`, or the VMs will rebuild the
+> old code.
+
+## Running locally with Docker Compose
+
+A single-host equivalent of the same topology, useful for quick iteration:
 
 ```bash
-vagrant destroy -f
+docker-compose up --build -d   # dashboard on http://localhost:8080
+docker-compose down -v
 ```
 
 ## Key endpoints
 
-Paths below are relative — prepend `http://localhost:8000` for a direct backend call, or `http://localhost:8080/api` when going through the UI's nginx proxy.
+Prepend `http://<prefix>.52:8000` for a direct backend call, or `http://<prefix>.53/api`
+to go through the UI's nginx proxy (it strips the `/api/` prefix before forwarding).
 
-Backend endpoints:
+**Sessions**
 
-- `GET /geocode?q=<city>` — proxy geocoding lookup (UI never calls the public geocoding API directly)
-- `GET /weather?city=<city>` or `?lat=<lat>&lon=<lon>` — fetch current weather + air quality for a city, log it to history, and return recent history alongside it
-- `GET /cities` — list cities currently in the background polling pool
-- `GET /latest?city=<city>` — instant read of the last background poll result, no external call made
-- `GET /history/recent?limit=<n>` — proxy to fetch recent history from the History service
-- `DELETE /history/clear` — clear all history
-- `DELETE /history/{id}` — delete a single history record
+- `GET /session` — bootstrap: ensures a session cookie and returns its saved UI state
+- `GET /session/state` — read the stored preferences
+- `PUT /session/state` — merge a patch into them
+- `DELETE /session` — drop the state and issue a fresh session
 
-History service endpoints (internal, reached via `http://history:8001` inside the network):
+**Cities and readings**
 
-- `POST /history/events` — store a request event
-- `GET /history/recent` — list recent history records
-- `DELETE /history/clear` — clear history
-- `DELETE /history/{id}` — delete one record
+- `GET /geocode?q=<city>` — proxied geocoding lookup
+- `POST /cities?city=<city>` — start watching a city (registration only, no weather fetch)
+- `DELETE /cities?city=<city>` — stop watching it
+- `GET /cities` — list the watch pool
+- `GET /latest?city=<city>` — last stored reading, from cache or the history DB
 
-## Verify the stack
+**History**
+
+- `GET /history/recent?limit=<n>&offset=<n>` — paged history, newest first
+- `GET /history/count` — total row count
+- `DELETE /history/clear` — wipe the log
+- `DELETE /history/{id}` — delete one row
+
+## Verifying the stack
+
+End-to-end proof that the async path works:
 
 ```bash
-curl "http://localhost:8080/api/geocode?q=Kyiv" | jq .
-curl "http://localhost:8080/api/weather?city=Kyiv" | jq .
-curl "http://localhost:8080/api/history/recent?limit=5" | jq .
+curl -s http://<prefix>.52:8000/history/count
+curl -s -X POST "http://<prefix>.52:8000/cities?city=Odesa"
+sleep 5
+curl -s http://<prefix>.52:8000/history/count     # should have grown by one
 ```
 
-If you open the UI, front-end autocomplete and weather/history calls should go through `/api/*` and not call the public API directly.
+The count grows only if the backend published to RabbitMQ, History consumed the message,
+and PostgreSQL accepted the insert.
+
+RabbitMQ management UI at `http://<prefix>.50:15672` (`app` / `example`). Under
+**Queues → weather.events** you should see `Consumers: 1` — that is the history service.
+
+Resilience demo — the message survives a dead consumer:
+
+```bash
+sudo -E vagrant ssh history -- 'docker stop history'
+curl -s -X POST "http://<prefix>.52:8000/cities?city=Poltava"
+# management UI now shows Ready: 1, Consumers: 0 — the message is waiting
+sudo -E vagrant ssh history -- 'docker start history'
+sleep 5
+curl -s "http://<prefix>.52:8000/history/recent?limit=1"   # Poltava is there
+```
 
 ## Environment variables
 
 | Variable | Service | Default | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | history | — (set in compose/Vagrant) | PostgreSQL connection string |
-| `HISTORY_BASE` | backend | `http://history:8001` | Base URL the backend uses to reach the History service |
-| `POLL_INTERVAL_SECONDS` | backend | `60` (`10` in this repo's compose file) | How often watched cities are re-polled in the background |
-| `WATCHED_CITIES` | backend | `Kyiv,Lviv` | Cities polled automatically on startup |
-| `MAX_WATCHED_CITIES` | backend | `8` (`3600` in this repo's compose file) | Cap on how many cities the poll pool can hold before evicting the oldest non-default entry |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | postgres | `postgres` / `example` / `history_db` | Database credentials |
+| `DATABASE_URL` | history | set by Vagrant/compose | PostgreSQL connection string |
+| `RABBITMQ_URL` | history, backend | set by Vagrant/compose | AMQP broker URL |
+| `WEATHER_EVENTS_QUEUE` | history, backend | `weather.events` | Queue name for the write path |
+| `HISTORY_BASE` | backend | `http://history:8001` | Where the backend sends its HTTP reads |
+| `REDIS_URL` | backend | `redis://postgres:6379/0` | Session store |
+| `SESSION_TTL_SECONDS` | backend | `2592000` (30 days) | Sliding session lifetime |
+| `POLL_INTERVAL_SECONDS` | backend | `60` (`1800` in Vagrant) | How often the poller sweeps the watch pool |
+| `MIN_RECORD_INTERVAL_SECONDS` | backend | `600` | Minimum gap between two stored readings for one city |
+| `WATCHED_CITIES` | backend | `Kyiv,Lviv` | Cities polled from startup, never evicted |
+| `MAX_WATCHED_CITIES` | backend | `8` | Watch-pool cap before the oldest non-default city is dropped |
+| `BACKEND_HOST` | ui | `backend` | Rendered into `nginx.conf` at container start via `envsubst` |
 
 ## Database inspection
 
-Connect to PostgreSQL:
-
 ```bash
-psql -h localhost -U postgres -d history_db -W
+psql -h <prefix>.50 -U postgres -d history_db -W    # password: example
 ```
 
-(password: `example`)
-
 ```sql
-SELECT id, event_time, path, query_params, response_status FROM requests_history ORDER BY id DESC LIMIT 10;
+SELECT id, event_time, query_params->>'city' AS city, response_status
+FROM requests_history ORDER BY id DESC LIMIT 10;
 ```
 
 ## Notes
 
-- The app uses `POSTGRES_PASSWORD=example` and database `history_db`. This is fine for local/learning use only — do not reuse these credentials anywhere else.
-- `/weather` currently returns both `payload` (the fresh reading) and recent `history` in one response.
-- `docker-compose.yml` exposes PostgreSQL on `5432` for local inspection; in the Vagrant setup, `pg_hba.conf` is opened to the `192.168.105.0/24` subnet instead.
+- Credentials here (`example`, `app`/`example`) are for local learning only — do not
+  reuse them anywhere.
+- `history-service` still exposes `POST /history/events`. The backend no longer uses it;
+  it is kept for manually injecting a test event without a broker running.
+- The `ui-service` image renders `nginx.conf` from a template at startup, so the same
+  image works under Compose (DNS name `backend`) and under Vagrant (a LAN IP).
