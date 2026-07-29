@@ -7,6 +7,7 @@ asynchronous messaging between the backend and the history service.
 Each service runs as a Docker container, and each container runs on its own Vagrant VM
 bridged onto the home LAN, so every machine has a real address you can reach from a
 phone or another laptop on the same router.
+<img width="1777" height="819" alt="image" src="https://github.com/user-attachments/assets/09b8bf35-14ba-4bea-b9ba-f45de6c4aed3" />
 
 ## Architecture
 
