@@ -5,9 +5,9 @@
 
 # Your home network. Change these two to match your router, then every VM
 # gets a real address on your LAN and is reachable from your phone/laptop.
-#   BRIDGE_IFACE: the adapter carrying your Wi-Fi/Ethernet traffic.
-#                 Check with: route get default | grep interface
-#   LAN_PREFIX:   the FIRST THREE octets of your home subnet only.
+#   BRIDGE_IFACE: run `ifconfig` (macOS) or `ip a` and use the active adapter
+#                 that carries your Wi-Fi/Ethernet traffic, e.g. "en0".
+#   LAN_PREFIX:   the first three octets of your home subnet.
 BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
 LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
@@ -24,7 +24,7 @@ end
 
 NODES = {
   "postgres" => {
-    octet:    50,
+    octet:    200,
     ssh_port: 2222,
     memory:   "1536",
     # Infra VM: three off-the-shelf images, nothing built from our repo.
@@ -42,7 +42,7 @@ NODES = {
   },
 
   "history" => {
-    octet:    51,
+    octet:    201,
     ssh_port: 2223,
     memory:   "1536",
     clone:    true,
@@ -50,12 +50,12 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t history-service /opt/app/history-service
       docker rm -f history 2>/dev/null || true
-      docker run -d --name history --restart unless-stopped --network host -e DATABASE_URL=postgresql://postgres:example@#{lan(50)}:5432/history_db -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ history-service
+      docker run -d --name history --restart unless-stopped --network host -e DATABASE_URL=postgresql://postgres:example@#{node_ip("postgres")}:5432/history_db -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/ history-service
     SHELL
   },
 
   "backend" => {
-    octet:    52,
+    octet:    202,
     ssh_port: 2224,
     memory:   "1536",
     clone:    true,
@@ -63,12 +63,25 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t backend-service /opt/app/backend-service
       docker rm -f backend 2>/dev/null || true
-      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{lan(51)}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ -e REDIS_URL=redis://#{lan(50)}:6379/0 -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 -e WATCHED_CITIES=Kyiv,Lviv -e MAX_WATCHED_CITIES=8 backend-service
+      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e REDIS_URL=redis://#{node_ip("postgres")}:6379/0 -e WATCHED_CITIES=Kyiv,Lviv backend-service
+    SHELL
+  },
+
+  "fetcher" => {
+    octet:    203,
+    ssh_port: 2226,
+    memory:   "1024",
+    clone:    true,
+    service:  "fetcher-service",
+    run: ->(ip) { <<~SHELL }
+      docker build -t fetcher-service /opt/app/fetcher-service
+      docker rm -f fetcher 2>/dev/null || true
+      docker run -d --name fetcher --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/ -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 fetcher-service
     SHELL
   },
 
   "ui" => {
-    octet:    53,
+    octet:    204,
     ssh_port: 2225,
     memory:   "1024",
     clone:    true,
@@ -76,10 +89,14 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t ui-service /opt/app/ui-service
       docker rm -f ui 2>/dev/null || true
-      docker run -d --name ui --restart unless-stopped --network host -e BACKEND_HOST=#{lan(52)} ui-service
+      docker run -d --name ui --restart unless-stopped --network host -e BACKEND_HOST=#{node_ip("backend")} ui-service
     SHELL
   },
 }
+
+def node_ip(name)
+  lan(NODES[name][:octet])
+end
 
 # /etc/hosts entries so the VMs can also address each other by name
 HOSTS_FILE = NODES.map { |name, c|

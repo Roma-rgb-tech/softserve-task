@@ -7,27 +7,28 @@ asynchronous messaging between the backend and the history service.
 Each service runs as a Docker container, and each container runs on its own Vagrant VM
 bridged onto the home LAN, so every machine has a real address you can reach from a
 phone or another laptop on the same router.
-<img width="1777" height="819" alt="image" src="https://github.com/user-attachments/assets/09b8bf35-14ba-4bea-b9ba-f45de6c4aed3" />
 
 ## Architecture
 
 ```
-                    Open-Meteo (weather · air quality · geocoding)
-                                    ▲
-                                    │ only the poller calls it
-                                    │
-Browser ──▶ UI (nginx) ──▶ Backend ─┼──▶ Redis        (UI session state)
-                             │      │
-                             │      └──▶ RabbitMQ ──▶ History ──▶ PostgreSQL
-                             │            (async write path)
-                             └──────────── HTTP reads ──────────▶ History
+                                     Open-Meteo (weather · air quality)
+                                            ▲
+                                            │ only the fetcher calls it
+                                            │
+Browser ──▶ UI (nginx) ──▶ Backend ──▶ Redis│   Fetcher ──(AMQP)──▶ RabbitMQ
+                              │             │      │                   │
+                              │             └──────┘                   ▼
+                              └──── HTTP reads ────────────────▶  History ──▶ PostgreSQL
+                                                                      ▲
+                                            Fetcher reads the watch list ┘
 ```
 
 | Service | Port | Role |
 |---|---|---|
 | `ui-service` | 80 | Static dashboard served by nginx; reverse-proxies `/api/*` to the backend |
-| `backend-service` | 8000 | The only component that calls the public weather API; owns sessions and orchestration |
-| `history-service` | 8001 | Owns persistence; consumes from RabbitMQ and writes to PostgreSQL |
+| `backend-service` | 8000 | UI-facing API: sessions, city registration, history reads. Never calls the weather API |
+| `fetcher-service` | 8002 | The only component that calls the public weather API; polls on its own clock and publishes to RabbitMQ |
+| `history-service` | 8001 | Owns persistence: the history rows and the watch list. Consumes from RabbitMQ |
 | `postgres` | 5432 | Relational store for the request history |
 | `redis` | 6379 | Ephemeral UI session state (no user accounts, no business data) |
 | `rabbitmq` | 5672 / 15672 | Durable `weather.events` queue + management UI |
@@ -36,11 +37,11 @@ Browser ──▶ UI (nginx) ──▶ Backend ─┼──▶ Redis        (UI 
 
 **No UI action ever triggers a call to the public API.** Clicking around the dashboard
 only reads stored data. Adding a city is a *configuration* change (`POST /cities`): it
-registers the city in the watch pool, and the backend's own poller decides when to fetch.
+registers the city in the watch list, and the fetcher service decides when to fetch.
 Geocoding is the single exception, because coordinates are needed before a city can be
 polled at all.
 
-**Writes are asynchronous, reads are synchronous.** The backend publishes each reading to
+**Writes are asynchronous, reads are synchronous.** The fetcher publishes each reading to
 the durable `weather.events` queue instead of calling History over HTTP. History consumes
 whenever it is alive — restart either side and RabbitMQ holds the message until the
 consumer comes back. Reads (`/history/recent`, `/history/count`) stay plain HTTP, since a
@@ -145,6 +146,7 @@ the router — not just from the host.
 | `history` | history-service | `<prefix>.51` | 2223 |
 | `backend` | backend-service | `<prefix>.52` | 2224 |
 | `ui` | ui-service | `<prefix>.53` | 2225 |
+| `fetcher` | fetcher-service | `<prefix>.54` | 2226 |
 
 Open the dashboard at `http://<prefix>.53` — including from your phone.
 
@@ -161,11 +163,11 @@ sudo -E vagrant destroy -f
 `sudo` is needed for these too: the QEMU processes belong to root, so an unprivileged
 `vagrant` cannot even read their state.
 
-### Adding a fifth VM
+### Adding another VM
 
 Every machine is generated from one dictionary, so adding a service means adding an entry
 to `NODES` in the `Vagrantfile` — a new octet, an SSH port, and the `docker run` line.
-No new config block, no copy-paste.
+The `fetcher` VM was added exactly that way: one entry, no new config block.
 
 > The provisioner clones this repo from GitHub (`REPO_BRANCH`), not from your working
 > copy. Push your changes before running `vagrant provision`, or the VMs will rebuild the
@@ -184,6 +186,11 @@ docker-compose down -v
 
 Prepend `http://<prefix>.52:8000` for a direct backend call, or `http://<prefix>.53/api`
 to go through the UI's nginx proxy (it strips the `/api/` prefix before forwarding).
+
+**Fetcher** (`http://<prefix>.54:8002`)
+
+- `GET /health` — what the fetcher has been doing: sweep count, last sweep time,
+  cities seen. Observability only; it never triggers a fetch.
 
 **Sessions**
 
@@ -240,15 +247,14 @@ curl -s "http://<prefix>.52:8000/history/recent?limit=1"   # Poltava is there
 | Variable | Service | Default | Purpose |
 |---|---|---|---|
 | `DATABASE_URL` | history | set by Vagrant/compose | PostgreSQL connection string |
-| `RABBITMQ_URL` | history, backend | set by Vagrant/compose | AMQP broker URL |
-| `WEATHER_EVENTS_QUEUE` | history, backend | `weather.events` | Queue name for the write path |
+| `RABBITMQ_URL` | history, fetcher | set by Vagrant/compose | AMQP broker URL |
+| `WEATHER_EVENTS_QUEUE` | history, fetcher | `weather.events` | Queue name for the write path |
 | `HISTORY_BASE` | backend | `http://history:8001` | Where the backend sends its HTTP reads |
 | `REDIS_URL` | backend | `redis://postgres:6379/0` | Session store |
 | `SESSION_TTL_SECONDS` | backend | `2592000` (30 days) | Sliding session lifetime |
-| `POLL_INTERVAL_SECONDS` | backend | `60` (`1800` in Vagrant) | How often the poller sweeps the watch pool |
-| `MIN_RECORD_INTERVAL_SECONDS` | backend | `600` | Minimum gap between two stored readings for one city |
-| `WATCHED_CITIES` | backend | `Kyiv,Lviv` | Cities polled from startup, never evicted |
-| `MAX_WATCHED_CITIES` | backend | `8` | Watch-pool cap before the oldest non-default city is dropped |
+| `POLL_INTERVAL_SECONDS` | fetcher | `1800` | How often the fetcher sweeps the watch list |
+| `MIN_RECORD_INTERVAL_SECONDS` | fetcher | `600` | Minimum gap between two stored readings for one city |
+| `WATCHED_CITIES` | backend | `Kyiv,Lviv` | Cities seeded into the list on first boot only |
 | `BACKEND_HOST` | ui | `backend` | Rendered into `nginx.conf` at container start via `envsubst` |
 
 ## Database inspection
