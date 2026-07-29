@@ -229,8 +229,6 @@
     <div class="shead" style="margin-left:0;">
       <h2>Temperature over time</h2>
       <div class="ctrls">
-        <label>City</label>
-        <select id="chartCity"><option value="">All cities</option></select>
         <label>Period</label>
         <select id="periodSel">
           <option value="24h">24 hours</option>
@@ -240,7 +238,7 @@
       </div>
     </div>
     <div class="chartbox"><canvas id="chart"></canvas></div>
-    <div class="hint">Readings arrive through RabbitMQ and are stored by the history service. Your period and city choices are saved to your session.</div>
+    <div class="hint">Readings arrive through RabbitMQ and are stored by the history service. Your period choice is saved to your session.</div>
   </div>
 
   <div class="panel">
@@ -275,13 +273,13 @@
 (() => {
   const $ = id => document.getElementById(id);
   const cards=$('cards'), logBody=$('logBody'), logEmpty=$('logEmpty'), toasts=$('toasts'),
-        periodSel=$('periodSel'), chartCity=$('chartCity'), cityFilter=$('cityFilter'),
+        periodSel=$('periodSel'), cityFilter=$('cityFilter'),
         pageSel=$('pageSel'), sessBadge=$('sessBadge'), showing=$('showing'),
         totalLbl=$('totalLbl'), moreBtn=$('moreBtn');
 
   let cityNames = [];        // fixed set, from the backend
   const state = {};          // name -> latest reading (or null while waiting)
-  let prefs = { period:'24h', chartCity:'', cityFilter:'', pageSize:20, featured:'' };
+  let prefs = { period:'24h', cityFilter:'', pageSize:20, featured:'' };
   let ready=false, rows=[], total=0, chart=null, selectsApplied=false;
 
   const f = (v,d=1) => (v==null||Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
@@ -437,10 +435,8 @@
 
   function fillCitySelects(){
     const opts = cityNames.map(n=>`<option value="${n}">${n}</option>`).join('');
-    chartCity.innerHTML='<option value="">All cities</option>'+opts;
     cityFilter.innerHTML='<option value="">All</option>'+opts;
     if(!selectsApplied){
-      if(cityNames.includes(prefs.chartCity)) chartCity.value=prefs.chartCity;
       if(cityNames.includes(prefs.cityFilter)) cityFilter.value=prefs.cityFilter;
       selectsApplied=true;
     }
@@ -498,66 +494,49 @@
 
   async function loadPage(){
     const size=Number(prefs.pageSize)||20;
+    // The city filter goes to the server, so limit/offset and the total count
+    // all describe the same filtered set — "showing N of M" stays honest.
+    const q = prefs.cityFilter ? `&city=${encodeURIComponent(prefs.cityFilter)}` : '';
+    const countQ = prefs.cityFilter ? `?city=${encodeURIComponent(prefs.cityFilter)}` : '';
     try{
       const [cRes,pRes]=await Promise.all([
-        fetch('/api/history/count'),
-        fetch(`/api/history/recent?limit=${size}&offset=${rows.length}`)
+        fetch(`/api/history/count${countQ}`),
+        fetch(`/api/history/recent?limit=${size}&offset=${rows.length}${q}`)
       ]);
       if(cRes.ok){ const c=await cRes.json(); total=c.total??total; }
       if(!pRes.ok) throw 0;
-      let page=await pRes.json();
-      if(prefs.cityFilter) page=page.filter(r=>(r.query_params&&r.query_params.city)===prefs.cityFilter);
-      rows=rows.concat(page);
+      rows=rows.concat(await pRes.json());
       renderLog(); updateFoot();
     }catch(e){ console.error('log',e); }
   }
 
   const SPAN={'24h':864e5,'7d':6048e5,'30d':2592e6};
-  const LINES=['#e0705a','#4fa88b','#5b7fc4','#d99a3c','#9a6ac4'];
-
   async function loadChart(){
     try{
       const res=await fetch('/api/history/recent?limit=500&offset=0'); if(!res.ok) return;
       const all=await res.json();
       const cut=Date.now()-(SPAN[prefs.period]||SPAN['24h']);
-      const usable=all.filter(r=>new Date(r.event_time).getTime()>=cut)
-                      .filter(r=>(r.response_body||{}).temperature!=null)
-                      .sort((a,b)=>new Date(a.event_time)-new Date(b.event_time));
-
-      // one line per city, so the cities can be compared directly
-      const wanted = prefs.chartCity ? [prefs.chartCity] : cityNames;
-      const datasets = wanted.map((name,i)=>{
-        const pts=usable.filter(r=>(r.query_params||{}).city===name);
-        return {
-          label:name,
-          data:pts.map(r=>({x:new Date(r.event_time).getTime(), y:r.response_body.temperature})),
-          borderColor:LINES[i%LINES.length],
-          backgroundColor:LINES[i%LINES.length]+'22',
-          borderWidth:2.4, tension:.38, fill:false,
-          pointRadius:pts.length>50?0:3,
-          pointBackgroundColor:'#fff', pointBorderColor:LINES[i%LINES.length], pointBorderWidth:2,
-        };
-      }).filter(d=>d.data.length);
-
+      const pts=all.filter(r=>new Date(r.event_time).getTime()>=cut)
+                   .filter(r=>(r.response_body||{}).temperature!=null)
+                   .sort((a,b)=>new Date(a.event_time)-new Date(b.event_time));
       const ctx=$('chart').getContext('2d');
+      const grad=ctx.createLinearGradient(0,0,0,230);
+      grad.addColorStop(0,'rgba(224,112,90,0.32)'); grad.addColorStop(1,'rgba(224,112,90,0.02)');
       if(chart) chart.destroy();
       chart=new Chart(ctx,{
         type:'line',
-        data:{ datasets },
-        options:{ responsive:true, maintainAspectRatio:false, parsing:false,
-          scales:{
-            x:{ type:'linear',
-                ticks:{ color:'#8b9aad', font:{size:10}, maxTicksLimit:8,
-                        callback:v=>new Date(v).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) },
-                grid:{ display:false } },
-            y:{ ticks:{ color:'#8b9aad', font:{size:11}, callback:v=>v+'°' },
-                grid:{ color:'rgba(255,255,255,0.7)' }, border:{display:false} } },
-          plugins:{
-            legend:{ display:datasets.length>1, labels:{ color:'#5b6b7f', usePointStyle:true, boxWidth:8, font:{size:11} } },
+        data:{ labels:pts.map(r=>new Date(r.event_time).toLocaleString()),
+               datasets:[{ data:pts.map(r=>r.response_body.temperature),
+                 borderColor:'#e0705a', backgroundColor:grad, borderWidth:2.4,
+                 tension:.38, fill:true, pointRadius:pts.length>50?0:3,
+                 pointBackgroundColor:'#fff', pointBorderColor:'#e0705a', pointBorderWidth:2 }] },
+        options:{ responsive:true, maintainAspectRatio:false,
+          scales:{ x:{ display:pts.length<=40, ticks:{color:'#8b9aad',font:{size:10}}, grid:{display:false} },
+                   y:{ ticks:{color:'#8b9aad',font:{size:11},callback:v=>v+'°'}, grid:{color:'rgba(255,255,255,0.7)'}, border:{display:false} } },
+          plugins:{ legend:{display:false},
             tooltip:{ backgroundColor:'rgba(255,255,255,0.95)', titleColor:'#1f2d3d', bodyColor:'#1f2d3d',
-                      borderColor:'rgba(224,112,90,0.4)', borderWidth:1, padding:10,
-                      callbacks:{ title:items=>new Date(items[0].parsed.x).toLocaleString(),
-                                  label:c=>` ${c.dataset.label}: ${c.parsed.y}°C` } } } }
+                      borderColor:'rgba(224,112,90,0.4)', borderWidth:1, padding:10, displayColors:false,
+                      callbacks:{ label:c=>` ${c.parsed.y}°C` } } } }
       });
     }catch(e){ console.error('chart',e); }
   }
@@ -565,7 +544,6 @@
   // ---- events ----
   moreBtn.addEventListener('click',()=>{ moreBtn.disabled=true; loadPage().finally(()=>moreBtn.disabled=false); });
   periodSel.addEventListener('change',async()=>{ await save({period:periodSel.value}); loadChart(); });
-  chartCity.addEventListener('change',async()=>{ await save({chartCity:chartCity.value}); loadChart(); });
   cityFilter.addEventListener('change',async()=>{ await save({cityFilter:cityFilter.value}); resetLog(); });
   pageSel.addEventListener('change',async()=>{ await save({pageSize:Number(pageSel.value)}); resetLog(); });
 
