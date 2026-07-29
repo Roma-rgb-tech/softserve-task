@@ -9,7 +9,7 @@
 #                 that carries your Wi-Fi/Ethernet traffic, e.g. "en0".
 #   LAN_PREFIX:   the first three octets of your home subnet.
 BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
-LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.0")
+LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
 REPO_BRANCH = "dev/redis"
