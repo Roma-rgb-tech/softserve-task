@@ -63,6 +63,7 @@
   .topbar{ display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:28px; }
   .logo{ display:flex; align-items:center; gap:10px; font-family:'Fraunces',serif; font-weight:600; font-size:1.45rem; letter-spacing:-0.01em; }
   .logo svg{ width:26px; height:26px; }
+  .logo small{ display:block; font-family:'Outfit'; font-weight:400; font-size:0.74rem; color:var(--ink-soft); }
   .meta{ font-family:'IBM Plex Mono',monospace; font-size:0.72rem; color:var(--ink-soft); text-align:right; line-height:1.7; }
   .meta .pill{ background:rgba(255,255,255,0.6); border-radius:999px; padding:2px 9px; margin-left:5px; }
 
@@ -83,6 +84,7 @@
   }
   .hero-temp sup{ font-size:1.9rem; font-weight:400; vertical-align:super; color:var(--ink-soft); }
   .hero-feels{ color:var(--ink-soft); font-size:0.88rem; margin-top:6px; }
+  .hero-obs{ font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--ink-faint); margin-top:10px; }
   .hero-scene{ display:flex; align-items:center; justify-content:center; min-height:190px; }
   .hero-scene svg{ width:100%; max-width:250px; height:auto; overflow:visible; }
 
@@ -94,39 +96,6 @@
   .hstat .k{ font-family:'IBM Plex Mono',monospace; font-size:0.66rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-faint); }
   .hstat .v{ font-family:'Fraunces',serif; font-size:1.35rem; font-weight:500; margin-top:3px; font-variant-numeric:tabular-nums; }
   .hstat .u{ font-size:0.72rem; color:var(--ink-faint); font-family:'Outfit'; }
-
-  /* ---------- search ---------- */
-  .searchwrap{ position:relative; margin-bottom:26px; }
-  .search{
-    display:flex; align-items:center; gap:12px; padding:12px 18px;
-    background:var(--glass); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
-    border:1px solid var(--glass-line); border-radius:999px; box-shadow:var(--shadow);
-    transition:box-shadow .2s ease;
-  }
-  .search:focus-within{ box-shadow:0 10px 44px rgba(224,112,90,0.24); }
-  .search svg{ width:19px; height:19px; color:var(--ink-faint); flex:none; }
-  .search input{
-    flex:1; border:0; outline:0; background:transparent; font-family:'Outfit'; font-size:1rem;
-    color:var(--ink); padding:6px 0;
-  }
-  .search input::placeholder{ color:var(--ink-faint); }
-  .search button{
-    border:0; border-radius:999px; padding:10px 20px; cursor:pointer;
-    background:var(--accent); color:#fff; font-family:'Outfit'; font-weight:500; font-size:0.9rem;
-    transition:transform .14s ease, filter .14s ease;
-  }
-  .search button:hover{ filter:brightness(1.06); }
-  .search button:active{ transform:scale(0.96); }
-  .search button:disabled{ opacity:.6; cursor:progress; }
-  .ac{
-    position:absolute; top:calc(100% + 8px); left:14px; right:14px; z-index:30;
-    background:rgba(255,255,255,0.94); backdrop-filter:blur(20px);
-    border:1px solid var(--glass-line); border-radius:18px; box-shadow:var(--shadow);
-    overflow:hidden; display:none;
-  }
-  .ac.open{ display:block; }
-  .ac div{ padding:11px 18px; font-size:0.92rem; cursor:pointer; }
-  .ac div:hover, .ac div.on{ background:rgba(224,112,90,0.1); color:var(--accent); }
 
   /* ---------- section head ---------- */
   .shead{ display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap; margin:0 0 14px 4px; }
@@ -186,11 +155,6 @@
   tbody td{ padding:11px 12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .tglyph{ width:20px; height:20px; display:block; }
   .ok{ color:var(--good); } .err{ color:var(--bad); }
-  .del{
-    border:0; background:transparent; color:var(--ink-faint); cursor:pointer;
-    font-family:'Outfit'; font-size:0.78rem; border-radius:8px; padding:3px 8px;
-  }
-  .del:hover{ color:var(--bad); background:rgba(207,87,87,0.1); }
   .tscroll{ overflow-x:auto; margin:0 -6px; }
   .empty{ padding:40px; text-align:center; color:var(--ink-faint); font-size:0.9rem; }
   .foot{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:14px; font-size:0.8rem; color:var(--ink-faint); }
@@ -199,8 +163,6 @@
     font-family:'Outfit'; font-size:0.82rem; border-radius:999px; padding:8px 16px; cursor:pointer;
   }
   .btn-ghost:hover{ border-color:var(--accent-soft); color:var(--accent); }
-  .btn-clear{ color:var(--bad); }
-  .btn-clear:hover{ border-color:var(--bad); background:rgba(207,87,87,0.08); }
 
   .toasts{ position:fixed; bottom:24px; right:24px; display:flex; flex-direction:column; gap:10px; z-index:100; }
   .toast{
@@ -235,7 +197,7 @@
         <circle cx="9" cy="9" r="4" fill="#e0705a"/>
         <path d="M8 17.5a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 12a3.6 3.6 0 01-.6 5.5H8z" fill="#fff" stroke="#1f2d3d" stroke-width="1.1" stroke-linejoin="round"/>
       </svg>
-      Skyline
+      <span>Skyline<small>Hourly weather monitoring</small></span>
     </div>
     <div class="meta">
       <span id="clockTime">--:--</span> · <span id="clockDate">—</span><br>
@@ -243,22 +205,14 @@
     </div>
   </div>
 
-  <div class="searchwrap">
-    <div class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>
-      <input id="cityInput" placeholder="Search a city — Lisbon, Osaka, Reykjavík…" autocomplete="off">
-      <button id="searchBtn">Add city</button>
-    </div>
-    <div class="ac" id="ac"></div>
-  </div>
-
   <div class="hero" id="hero">
     <div class="hero-grid">
       <div>
         <h1 class="hero-city" id="heroCity">Loading…</h1>
-        <div class="hero-cond" id="heroCond">Fetching current conditions</div>
+        <div class="hero-cond" id="heroCond">Waiting for the first collected reading</div>
         <div class="hero-temp" id="heroTemp">--<sup>°C</sup></div>
         <div class="hero-feels" id="heroFeels"></div>
+        <div class="hero-obs" id="heroObs"></div>
       </div>
       <div class="hero-scene" id="heroScene"></div>
     </div>
@@ -266,7 +220,7 @@
   </div>
 
   <div class="shead" style="margin-top:34px;">
-    <h2>Your cities</h2>
+    <h2>Monitored cities</h2>
     <div class="ctrls"><label>Tap a card to feature it</label></div>
   </div>
   <div class="cards" id="cards"></div>
@@ -289,26 +243,26 @@
 
   <div class="panel">
     <div class="shead" style="margin-left:0;">
-      <h2>Request log <span style="font-family:'IBM Plex Mono',monospace;font-size:0.74rem;color:var(--ink-faint);" id="totalLbl"></span></h2>
+      <h2>Collection log <span style="font-family:'IBM Plex Mono',monospace;font-size:0.74rem;color:var(--ink-faint);" id="totalLbl"></span></h2>
       <div class="ctrls">
         <label>City</label>
         <select id="cityFilter"><option value="">All</option></select>
         <label>Rows</label>
         <select id="pageSel"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
-        <button class="btn-ghost btn-clear" id="clearBtn">Clear log</button>
       </div>
     </div>
     <div class="tscroll">
       <table>
-        <thead><tr><th></th><th>ID</th><th>Time</th><th>City</th><th>Temp</th><th>Humidity</th><th>NO₂</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th></th><th>ID</th><th>Collected at</th><th>City</th><th>Temp</th><th>Humidity</th><th>NO₂</th><th>Status</th></tr></thead>
         <tbody id="logBody"></tbody>
       </table>
     </div>
-    <div class="empty" id="logEmpty" style="display:none;">Nothing logged yet. Add a city to start collecting readings.</div>
+    <div class="empty" id="logEmpty" style="display:none;">Nothing collected yet — the first sweep runs shortly after startup.</div>
     <div class="foot">
       <span id="showing">Showing 0 of 0</span>
       <button class="btn-ghost" id="moreBtn" style="display:none;">Load more</button>
     </div>
+    <div class="hint">This log is append-only: readings are written straight from the message queue and cannot be edited or removed from here.</div>
   </div>
 
 </div>
@@ -318,14 +272,15 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const cityInput=$('cityInput'), searchBtn=$('searchBtn'), ac=$('ac'), cards=$('cards'),
-        logBody=$('logBody'), logEmpty=$('logEmpty'), clearBtn=$('clearBtn'), toasts=$('toasts'),
-        periodSel=$('periodSel'), cityFilter=$('cityFilter'), pageSel=$('pageSel'),
-        sessBadge=$('sessBadge'), showing=$('showing'), totalLbl=$('totalLbl'), moreBtn=$('moreBtn');
+  const cards=$('cards'), logBody=$('logBody'), logEmpty=$('logEmpty'), toasts=$('toasts'),
+        periodSel=$('periodSel'), cityFilter=$('cityFilter'),
+        pageSel=$('pageSel'), sessBadge=$('sessBadge'), showing=$('showing'),
+        totalLbl=$('totalLbl'), moreBtn=$('moreBtn');
 
-  const state = {};
+  let cityNames = [];        // fixed set, from the backend
+  const state = {};          // name -> latest reading (or null while waiting)
   let prefs = { period:'24h', cityFilter:'', pageSize:20, featured:'' };
-  let ready=false, rows=[], total=0, chart=null;
+  let ready=false, rows=[], total=0, chart=null, selectsApplied=false;
 
   const f = (v,d=1) => (v==null||Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
 
@@ -373,8 +328,7 @@
     document.body.style.backgroundAttachment='fixed';
   }
 
-  function glyph(kind,size){
-    const s=size||1;
+  function glyph(kind){
     const sun='#e8a33d', moon='#7d8db0', cl='#ffffff', clS='#b8c6d6', rn='#6da8c9', sw='#a9c8dd', bolt='#e8c53d';
     if(kind==='clear-day') return `<circle cx="12" cy="12" r="5" fill="${sun}"/><g stroke="${sun}" stroke-width="1.7" stroke-linecap="round"><path d="M12 2.4v2.8M12 18.8v2.8M2.4 12h2.8M18.8 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M5.2 18.8l2-2M16.8 7.2l2-2"/></g>`;
     if(kind==='clear-night') return `<path d="M20 14.6A8.2 8.2 0 119.6 3.4 6.4 6.4 0 0020 14.6z" fill="${moon}"/>`;
@@ -427,18 +381,25 @@
 
   // ---- hero ----
   function renderHero(){
-    const names=Object.keys(state);
-    let name = prefs.featured && state[prefs.featured] ? prefs.featured
-             : names.find(n=>state[n]) || names[0];
-    if(!name){ return; }
+    const withData = cityNames.filter(n=>state[n]);
+    const name = (prefs.featured && state[prefs.featured]) ? prefs.featured
+               : (withData[0] || cityNames[0]);
+    if(!name) return;
     const r=state[name];
     $('heroCity').textContent=name;
-    if(!r){ $('heroCond').textContent='Waiting for the first reading'; return; }
+    if(!r){
+      $('heroCond').textContent='Waiting for the first collected reading';
+      $('heroTemp').innerHTML='--<sup>°C</sup>';
+      $('heroFeels').textContent=''; $('heroObs').textContent='';
+      $('heroScene').innerHTML=''; $('heroStats').innerHTML='';
+      return;
+    }
     const kind=kindOf(r);
     paintSky(kind);
     $('heroCond').textContent=DESC[r.weathercode] || 'Current conditions';
     $('heroTemp').innerHTML=`${f(r.temperature,0)}<sup>°C</sup>`;
     $('heroFeels').textContent=`Feels like ${f(r.apparent_temperature,0)}°C`;
+    $('heroObs').textContent=r.time ? `Observed ${new Date(r.time).toLocaleString()}` : '';
     $('heroScene').innerHTML=heroScene(kind);
     const aq=r.air_quality||{};
     $('heroStats').innerHTML=[
@@ -450,15 +411,15 @@
   function aqColor(v,lo,hi){ if(v==null) return '#c9d3dd'; return v<lo?'#4fa88b':v<hi?'#d99a3c':'#cf5757'; }
 
   function renderCards(){
-    const names=Object.keys(state);
-    cards.innerHTML=names.map((name,i)=>{
+    const featured = (prefs.featured && state[prefs.featured]) ? prefs.featured
+                   : (cityNames.find(n=>state[n]) || cityNames[0]);
+    cards.innerHTML=cityNames.map((name,i)=>{
       const r=state[name];
-      if(!r) return `<div class="card waiting" style="animation-delay:${i*45}ms"><span class="dot"></span>${name}</div>`;
+      if(!r) return `<div class="card waiting" data-city="${name}" style="animation-delay:${i*45}ms"><span class="dot"></span>${name}</div>`;
       const kind=kindOf(r), aq=r.air_quality||{};
-      const active = name===(prefs.featured||names.find(n=>state[n]));
       const bars=[[aq.pm2_5,12,35],[aq.pm10,20,50],[aq.nitrogen_dioxide,40,100],[aq.ozone,100,160]]
         .map(([v,lo,hi])=>`<span class="cbar"><i style="width:${v==null?0:Math.min(100,(v/hi)*100)}%;background:${aqColor(v,lo,hi)}"></i></span>`).join('');
-      return `<div class="card${active?' active':''}" data-city="${name}" style="animation-delay:${i*45}ms">
+      return `<div class="card${name===featured?' active':''}" data-city="${name}" style="animation-delay:${i*45}ms">
         <svg class="cglyph" viewBox="0 0 24 24">${glyph(kind)}</svg>
         <div class="cname">${name}</div>
         <div class="ctemp">${f(r.temperature,0)}<sup>°C</sup></div>
@@ -470,46 +431,39 @@
       await save({featured:el.dataset.city});
       renderHero(); renderCards();
     }));
+  }
 
-    const prev=cityFilter.value;
-    cityFilter.innerHTML='<option value="">All</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
-    const want = ready && !cityFilter.dataset.set ? prefs.cityFilter : prev;
-    if(names.includes(want)||want==='') cityFilter.value=want;
-    cityFilter.dataset.set='1';
+  function fillCitySelects(){
+    const opts = cityNames.map(n=>`<option value="${n}">${n}</option>`).join('');
+    cityFilter.innerHTML='<option value="">All</option>'+opts;
+    if(!selectsApplied){
+      if(cityNames.includes(prefs.cityFilter)) cityFilter.value=prefs.cityFilter;
+      selectsApplied=true;
+    }
   }
 
   // ---- data ----
-  async function refreshCities(){
+  // The city set is fixed by deployment config; the UI only reads it.
+  async function loadCities(){
     try{
       const res=await fetch('/api/cities'); if(!res.ok) throw 0;
       const {cities=[]}=await res.json();
-      for(const n of cities) if(!(n in state)) state[n]=null;
-      await Promise.all(cities.map(async n=>{
-        try{ const r=await fetch(`/api/latest?city=${encodeURIComponent(n)}`);
-             if(r.ok){ const j=await r.json(); state[n]=j.payload; } }catch{}
-      }));
-      renderCards(); renderHero();
+      cityNames=cities;
+      for(const n of cityNames) if(!(n in state)) state[n]=null;
+      fillCitySelects();
     }catch(e){ console.error('cities',e); }
   }
 
-  // Adding a city only registers it for watching. The backend's own poller
-  // decides when to call the weather API — no UI action ever triggers a fetch.
-  async function addCity(){
-    const c=cityInput.value.trim(); if(!c) return;
-    searchBtn.disabled=true; searchBtn.textContent='Adding…';
+  // Reads stored data only — nothing here can trigger an outbound fetch.
+  async function refreshReadings(){
     try{
-      const res=await fetch(`/api/cities?city=${encodeURIComponent(c)}`,{method:'POST'});
-      if(!res.ok){ const b=await res.json().catch(()=>({})); throw new Error(b.detail||`HTTP ${res.status}`); }
+      const res=await fetch('/api/latest');
+      if(res.status===503){ renderCards(); renderHero(); return; }
+      if(!res.ok) throw 0;
       const j=await res.json();
-      const nm=j.location_name||c;
-      if(!(nm in state)) state[nm]=null;
-      await save({featured:nm});
+      for(const [name,entry] of Object.entries(j.cities||{})) state[name]=entry.payload;
       renderCards(); renderHero();
-      toast(`Now watching ${nm} — first reading arrives shortly`,true);
-      cityInput.value=''; closeAc();
-      await refreshCities(); await resetLog(); await loadChart();
-    }catch(e){ toast(`Could not add "${c}" — ${e.message}`); }
-    finally{ searchBtn.disabled=false; searchBtn.textContent='Add city'; }
+    }catch(e){ console.error('latest',e); }
   }
 
   function renderLog(){
@@ -526,19 +480,13 @@
         <td>${f(b.humidity,0)}%</td>
         <td>${f(aq.nitrogen_dioxide,0)}</td>
         <td class="${ok?'ok':'err'}">${r.response_status??'—'}</td>
-        <td><button class="del" data-id="${r.id}">Delete</button></td>
       </tr>`;
     }).join('');
-    logBody.querySelectorAll('.del').forEach(b=>b.addEventListener('click',async e=>{
-      const id=e.currentTarget.dataset.id;
-      try{ await fetch(`/api/history/${id}`,{method:'DELETE'}); toast(`Deleted #${id}`,true); resetLog(); }
-      catch{ toast('Could not delete that entry'); }
-    }));
   }
 
   function updateFoot(){
     showing.textContent=`Showing ${rows.length} of ${total}`;
-    totalLbl.textContent=`${total} total`;
+    totalLbl.textContent=`${total} readings`;
     moreBtn.style.display = rows.length<total ? 'inline-block' : 'none';
   }
 
@@ -596,37 +544,6 @@
   periodSel.addEventListener('change',async()=>{ await save({period:periodSel.value}); loadChart(); });
   cityFilter.addEventListener('change',async()=>{ await save({cityFilter:cityFilter.value}); resetLog(); });
   pageSel.addEventListener('change',async()=>{ await save({pageSize:Number(pageSel.value)}); resetLog(); });
-  searchBtn.addEventListener('click',addCity);
-  clearBtn.addEventListener('click',async()=>{
-    if(!confirm('Clear the whole request log?')) return;
-    try{ await fetch('/api/history/clear',{method:'DELETE'}); toast('Log cleared',true); resetLog(); loadChart(); }
-    catch{ toast('Could not clear the log'); }
-  });
-
-  let acT=null, acItems=[], acI=-1;
-  function closeAc(){ ac.classList.remove('open'); ac.innerHTML=''; acItems=[]; acI=-1; }
-  function drawAc(){ ac.innerHTML=acItems.map((l,i)=>`<div class="${i===acI?'on':''}" data-i="${i}">${l}</div>`).join('');
-                     ac.classList.toggle('open',acItems.length>0); }
-  cityInput.addEventListener('input',()=>{
-    clearTimeout(acT); const q=cityInput.value.trim(); if(!q){ closeAc(); return; }
-    acT=setTimeout(async()=>{
-      try{ const r=await fetch(`/api/geocode?q=${encodeURIComponent(q)}`); const j=await r.json();
-           acItems=(j.results||[]).map(x=>`${x.name}${x.country?', '+x.country:''}`); acI=-1; drawAc(); }
-      catch{ closeAc(); }
-    },280);
-  });
-  cityInput.addEventListener('keydown',e=>{
-    if(e.key==='Enter'){ addCity(); return; }
-    if(!acItems.length) return;
-    if(e.key==='ArrowDown'){ e.preventDefault(); acI=Math.min(acI+1,acItems.length-1); drawAc(); }
-    if(e.key==='ArrowUp'){ e.preventDefault(); acI=Math.max(acI-1,0); drawAc(); }
-    if(e.key==='Escape') closeAc();
-  });
-  ac.addEventListener('click',e=>{
-    const d=e.target.closest('[data-i]'); if(!d) return;
-    cityInput.value=acItems[+d.dataset.i].split(',')[0]; closeAc(); addCity();
-  });
-  document.addEventListener('click',e=>{ if(!e.target.closest('.searchwrap')) closeAc(); });
 
   function tick(){
     const n=new Date();
@@ -635,8 +552,17 @@
   }
   tick(); setInterval(tick,30000);
 
-  (async()=>{ await loadSession(); await refreshCities(); await resetLog(); await loadChart(); })();
-  setInterval(refreshCities,15000);
+  (async()=>{
+    await loadSession();
+    await loadCities();
+    await refreshReadings();
+    await resetLog();
+    await loadChart();
+  })();
+
+  // Readings change once an hour; a light refresh keeps a long-open tab
+  // current without any user action.
+  setInterval(async()=>{ await refreshReadings(); await resetLog(); await loadChart(); }, 60000);
 })();
 </script>
 </body>
