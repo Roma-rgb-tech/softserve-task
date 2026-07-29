@@ -5,11 +5,11 @@
 
 # Your home network. Change these two to match your router, then every VM
 # gets a real address on your LAN and is reachable from your phone/laptop.
-#   BRIDGE_IFACE: the adapter carrying your Wi-Fi/Ethernet traffic.
-#                 Check with: route get default | grep interface
-#   LAN_PREFIX:   the FIRST THREE octets of your home subnet only.
+#   BRIDGE_IFACE: run `ifconfig` (macOS) or `ip a` and use the active adapter
+#                 that carries your Wi-Fi/Ethernet traffic, e.g. "en0".
+#   LAN_PREFIX:   the first three octets of your home subnet.
 BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
-LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
+LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.0")
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
 REPO_BRANCH = "dev/redis"
@@ -63,7 +63,20 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t backend-service /opt/app/backend-service
       docker rm -f backend 2>/dev/null || true
-      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{lan(51)}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ -e REDIS_URL=redis://#{lan(50)}:6379/0 -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 -e WATCHED_CITIES=Kyiv,Lviv -e MAX_WATCHED_CITIES=8 backend-service
+      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{lan(51)}:8001 -e REDIS_URL=redis://#{lan(50)}:6379/0 -e WATCHED_CITIES=Kyiv,Lviv backend-service
+    SHELL
+  },
+
+  "fetcher" => {
+    octet:    54,
+    ssh_port: 2226,
+    memory:   "1024",
+    clone:    true,
+    service:  "fetcher-service",
+    run: ->(ip) { <<~SHELL }
+      docker build -t fetcher-service /opt/app/fetcher-service
+      docker rm -f fetcher 2>/dev/null || true
+      docker run -d --name fetcher --restart unless-stopped --network host -e HISTORY_BASE=http://#{lan(51)}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{lan(50)}/ -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 fetcher-service
     SHELL
   },
 
