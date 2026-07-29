@@ -41,20 +41,25 @@ async def geocode_city(name: str) -> Optional[Dict[str, Any]]:
 @app.on_event("startup")
 async def startup():
     """Opens the Redis connection and seeds the watch list once. No polling
-    happens here — the fetcher service owns every call to the weather API."""
+    happens here — the fetcher service owns every call to the weather API.
+
+    Seeding is best-effort: if History isn't up yet we skip it rather than
+    failing startup, and the cities get registered on a later boot or when a
+    user adds them."""
     global redis_client
     redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
     try:
         existing = await history_get("/cities")
+        if not existing:
+            for name in DEFAULT_CITY_NAMES:
+                geo = await geocode_city(name)
+                if geo:
+                    await register_city(geo.get("name") or name,
+                                        geo["latitude"], geo["longitude"])
     except Exception:
-        existing = []
-    if not existing:
-        for name in DEFAULT_CITY_NAMES:
-            geo = await geocode_city(name)
-            if geo:
-                await register_city(geo.get("name") or name, geo["latitude"], geo["longitude"])
-
-
+        pass
+    
+    
 @app.on_event("shutdown")
 async def shutdown():
     if redis_client:
