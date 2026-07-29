@@ -35,11 +35,19 @@ Browser ──▶ UI (nginx) ──▶ Backend ──▶ Redis│   Fetcher ─�
 
 ### Rules the design follows
 
-**No UI action ever triggers a call to the public API.** Clicking around the dashboard
-only reads stored data. Adding a city is a *configuration* change (`POST /cities`): it
-registers the city in the watch list, and the fetcher service decides when to fetch.
-Geocoding is the single exception, because coordinates are needed before a city can be
-polled at all.
+**No UI action ever triggers a call to the public API.** The monitored cities are fixed
+by deployment configuration (`WATCHED_CITIES`), and the dashboard has no way to add,
+remove or refresh one — it only reads what has already been collected. The fetcher
+resolves those names to coordinates once at startup and then polls hourly on its own
+clock.
+
+**The history is append-only.** Rows are written by the history service straight from
+the message queue. There is no delete or clear endpoint anywhere in the stack, so a
+monitoring record cannot be rewritten from the UI.
+
+**The UI talks only to the backend.** Every request from the browser goes to `/api/*`,
+which nginx proxies to the backend. Nothing in the page addresses the fetcher, the
+history service, the database, Redis or RabbitMQ.
 
 **Writes are asynchronous, reads are synchronous.** The fetcher publishes each reading to
 the durable `weather.events` queue instead of calling History over HTTP. History consumes
@@ -47,9 +55,9 @@ whenever it is alive — restart either side and RabbitMQ holds the message unti
 consumer comes back. Reads (`/history/recent`, `/history/count`) stay plain HTTP, since a
 queue is one-directional and RPC-over-AMQP would be overkill here.
 
-**Duplicate readings are suppressed.** `MIN_RECORD_INTERVAL_SECONDS` (default 600) means
-two rows for the same city can never land within ten minutes of each other, however often
-the poller runs or how many times a city is re-registered.
+**Duplicate readings are suppressed.** `MIN_RECORD_INTERVAL_SECONDS` (default 3000)
+means two rows for the same city can never land closer than ~50 minutes apart, however
+often the service restarts.
 
 **Redis holds UI preferences only.** Session state is the chart period, the city filter,
 the rows-per-page choice, and the featured city — never weather data. There is no
@@ -72,16 +80,17 @@ and four air-quality bars (PM2.5, PM10, NO₂, O₃) coloured green/amber/red by
 Click any card to feature it — the hero and the page sky follow, and the choice is saved
 to your session.
 
-**Search.** Type a city and get autocomplete suggestions (arrow keys and Enter work).
-Selecting one registers the city for watching; the first reading arrives shortly after,
-once the poller picks it up.
+**Fixed city set.** The dashboard monitors the cities named in `WATCHED_CITIES`
+(Kyiv, Warsaw and Vilnius by default). There is no search box and no add/remove button:
+changing the set is a deployment decision, not a user action.
 
-**Temperature chart.** A trend line built from the stored history, with a period selector
-(24 hours / 7 days / 30 days). The choice persists across refreshes.
+**Temperature chart.** One line per monitored city, built from the stored history, with
+a period selector (24 hours / 7 days / 30 days) and a city selector. Both persist across
+refreshes.
 
-**Request log.** Every reading the backend has recorded, newest first: id, timestamp,
-city, temperature, humidity, NO₂, and HTTP status. Filter by city, choose 20/50/100 rows,
-page through the whole log with "Load more", delete a single row, or clear everything.
+**Collection log.** Every reading the fetcher has collected, newest first: id, timestamp,
+city, temperature, humidity, NO₂, and upstream status. Filter by city, choose 20/50/100
+rows, and page through the whole log with "Load more". The log is read-only.
 
 **Session persistence.** Change the chart period, the filter, the row count, or the
 featured city, then refresh the page — everything comes back exactly as you left it,
@@ -142,13 +151,17 @@ the router — not just from the host.
 
 | VM | Containers | IP | SSH port |
 |---|---|---|---|
-| `postgres` | postgres, redis, rabbitmq | `<prefix>.50` | 2222 |
-| `history` | history-service | `<prefix>.51` | 2223 |
-| `backend` | backend-service | `<prefix>.52` | 2224 |
-| `ui` | ui-service | `<prefix>.53` | 2225 |
-| `fetcher` | fetcher-service | `<prefix>.54` | 2226 |
+| `postgres` | postgres, redis, rabbitmq | `<prefix>.200` | 2222 |
+| `history` | history-service | `<prefix>.201` | 2223 |
+| `backend` | backend-service | `<prefix>.202` | 2224 |
+| `fetcher` | fetcher-service | `<prefix>.203` | 2226 |
+| `ui` | ui-service | `<prefix>.204` | 2225 |
 
-Open the dashboard at `http://<prefix>.53` — including from your phone.
+Pick octets **outside your router's DHCP pool**. A device that already holds one of these
+addresses will answer instead of the VM, and the symptom is confusing: the VM pings fine
+from inside the LAN but refuses connections from the host.
+
+Open the dashboard at `http://<prefix>.204` — including from your phone.
 
 ### Everyday commands
 
@@ -201,32 +214,33 @@ to go through the UI's nginx proxy (it strips the `/api/` prefix before forwardi
 
 **Cities and readings**
 
-- `GET /geocode?q=<city>` — proxied geocoding lookup
-- `POST /cities?city=<city>` — start watching a city (registration only, no weather fetch)
-- `DELETE /cities?city=<city>` — stop watching it
-- `GET /cities` — list the watch pool
-- `GET /latest?city=<city>` — last stored reading, from cache or the history DB
+- `GET /cities` — the monitored cities (fixed configuration)
+- `GET /latest` — latest stored reading per city
+- `GET /latest?city=<city>` — latest stored reading for one city
 
-**History**
+**History** (read-only — there is no write or delete endpoint)
 
 - `GET /history/recent?limit=<n>&offset=<n>` — paged history, newest first
 - `GET /history/count` — total row count
-- `DELETE /history/clear` — wipe the log
-- `DELETE /history/{id}` — delete one row
 
 ## Verifying the stack
 
-End-to-end proof that the async path works:
+The fetcher reports its own activity:
 
 ```bash
-curl -s http://<prefix>.52:8000/history/count
-curl -s -X POST "http://<prefix>.52:8000/cities?city=Odesa"
-sleep 5
-curl -s http://<prefix>.52:8000/history/count     # should have grown by one
+curl -s http://<prefix>.203:8002/health
 ```
 
-The count grows only if the backend published to RabbitMQ, History consumed the message,
-and PostgreSQL accepted the insert.
+`sweeps_completed` climbs on its own schedule with nobody touching the UI, which is the
+point: collection is driven by the fetcher's clock, not by user actions.
+
+Readings only reach the database if the fetcher published to RabbitMQ, History consumed
+the message, and PostgreSQL accepted the insert — so a growing count proves the whole
+async path:
+
+```bash
+curl -s http://<prefix>.202:8000/history/count
+```
 
 RabbitMQ management UI at `http://<prefix>.50:15672` (`app` / `example`). Under
 **Queues → weather.events** you should see `Consumers: 1` — that is the history service.
@@ -252,9 +266,9 @@ curl -s "http://<prefix>.52:8000/history/recent?limit=1"   # Poltava is there
 | `HISTORY_BASE` | backend | `http://history:8001` | Where the backend sends its HTTP reads |
 | `REDIS_URL` | backend | `redis://postgres:6379/0` | Session store |
 | `SESSION_TTL_SECONDS` | backend | `2592000` (30 days) | Sliding session lifetime |
-| `POLL_INTERVAL_SECONDS` | fetcher | `1800` | How often the fetcher sweeps the watch list |
-| `MIN_RECORD_INTERVAL_SECONDS` | fetcher | `600` | Minimum gap between two stored readings for one city |
-| `WATCHED_CITIES` | backend | `Kyiv,Lviv` | Cities seeded into the list on first boot only |
+| `POLL_INTERVAL_SECONDS` | fetcher | `3600` | How often the fetcher sweeps every city |
+| `MIN_RECORD_INTERVAL_SECONDS` | fetcher | `3000` | Minimum gap between two stored readings for one city |
+| `WATCHED_CITIES` | fetcher, backend | `Kyiv,Warsaw,Vilnius` | The monitored cities. Both services read the same list |
 | `BACKEND_HOST` | ui | `backend` | Rendered into `nginx.conf` at container start via `envsubst` |
 
 ## Database inspection
@@ -272,7 +286,5 @@ FROM requests_history ORDER BY id DESC LIMIT 10;
 
 - Credentials here (`example`, `app`/`example`) are for local learning only — do not
   reuse them anywhere.
-- `history-service` still exposes `POST /history/events`. The backend no longer uses it;
-  it is kept for manually injecting a test event without a broker running.
 - The `ui-service` image renders `nginx.conf` from a template at startup, so the same
   image works under Compose (DNS name `backend`) and under Vagrant (a LAN IP).

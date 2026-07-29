@@ -40,7 +40,7 @@ services:
     environment:
       HISTORY_BASE: http://history:8001
       REDIS_URL: redis://redis:6379/0
-      WATCHED_CITIES: "Kyiv,Lviv"
+      WATCHED_CITIES: "Kyiv,Warsaw,Vilnius"
     depends_on:
       - history
       - redis
@@ -51,12 +51,11 @@ services:
     build:
       context: ./fetcher-service
     environment:
-      HISTORY_BASE: http://history:8001
       RABBITMQ_URL: amqp://app:example@rabbitmq/
-      POLL_INTERVAL_SECONDS: "1800"
-      MIN_RECORD_INTERVAL_SECONDS: "600"
+      WATCHED_CITIES: "Kyiv,Warsaw,Vilnius"
+      POLL_INTERVAL_SECONDS: "3600"
+      MIN_RECORD_INTERVAL_SECONDS: "3000"
     depends_on:
-      - history
       - rabbitmq
     ports:
       - "8002:8002"

@@ -1,20 +1,20 @@
 """Fetcher service.
 
-The only component in the system that talks to the public weather APIs. It
-runs on its own clock — nothing in the UI or the backend can make it fetch on
-demand — reads the watch list from the History service, and publishes each
-reading to RabbitMQ. History consumes from that queue and persists.
+The only component in the system that talks to the public weather APIs.
+
+The city list is fixed by configuration (`WATCHED_CITIES`) — nothing at
+runtime can change it, and no user action can make this service fetch. It
+resolves those names to coordinates once at startup, then polls on its own
+clock and publishes every reading to RabbitMQ.
 
     Fetcher --(AMQP: weather.events)--> History --> Postgres
-       |
-       +--(HTTP read: which cities?)--> History
 """
 
 import os
 import json
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 import aio_pika
@@ -22,18 +22,23 @@ from fastapi import FastAPI
 
 app = FastAPI()
 
-HISTORY_BASE = os.getenv("HISTORY_BASE", "http://history:8001")
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 AIR_QUALITY_API = "https://air-quality-api.open-meteo.com/v1/air-quality"
+GEOCODE_API = "https://geocoding-api.open-meteo.com/v1/search"
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
 QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
 
-# How often the whole watch list is swept.
-POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "1800"))
-# Never record two readings for the same city closer together than this,
-# regardless of how often the sweep runs.
-MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "600"))
+# The monitored cities. Deployment configuration, not runtime state.
+WATCHED_CITIES: List[str] = [
+    c.strip() for c in os.getenv("WATCHED_CITIES", "Kyiv,Warsaw,Vilnius").split(",") if c.strip()
+]
+
+# One sweep per hour by default.
+POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "3600"))
+# Never record two readings for the same city closer together than this, so a
+# restart loop can't flood the history with near-identical rows.
+MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "3000"))
 
 CURRENT_WEATHER_FIELDS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,"
@@ -45,9 +50,44 @@ _rmq_connection: Optional[aio_pika.RobustConnection] = None
 _rmq_channel: Optional[aio_pika.Channel] = None
 _poll_task: Optional[asyncio.Task] = None
 
+# name -> {"name", "latitude", "longitude"}, resolved once at startup
+resolved_cities: Dict[str, Dict[str, Any]] = {}
 last_recorded_at: Dict[str, datetime] = {}
 last_sweep: Optional[str] = None
 sweep_count = 0
+
+
+async def geocode_city(name: str) -> Optional[Dict[str, Any]]:
+    """Resolve one city name to coordinates. Runs only at startup — the list
+    is fixed, so this is a one-off resolution of configuration, not something
+    a user can trigger."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            r = await client.get(GEOCODE_API, params={"name": name, "count": 1})
+            j = r.json()
+        except Exception:
+            return None
+    results = (j or {}).get("results") or []
+    if not results:
+        return None
+    top = results[0]
+    return {
+        "name": top.get("name") or name,
+        "latitude": top.get("latitude"),
+        "longitude": top.get("longitude"),
+    }
+
+
+async def resolve_all_cities():
+    """Fill `resolved_cities` from the configured names. Retries the whole set
+    until every city is resolved, because without coordinates a city simply
+    cannot be polled."""
+    for name in WATCHED_CITIES:
+        if name in resolved_cities:
+            continue
+        geo = await geocode_city(name)
+        if geo and geo["latitude"] is not None:
+            resolved_cities[geo["name"]] = geo
 
 
 async def get_rmq_channel() -> Optional[aio_pika.Channel]:
@@ -63,18 +103,6 @@ async def get_rmq_channel() -> Optional[aio_pika.Channel]:
         return _rmq_channel
     except Exception:
         return None
-
-
-async def load_watch_list() -> list:
-    """Read the cities to poll from the History service. A sync HTTP read is
-    fine here: it's our own service, and a queue would be the wrong shape for
-    a request/response lookup."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp = await client.get(f"{HISTORY_BASE}/cities")
-            return resp.json()
-        except Exception:
-            return []
 
 
 async def fetch_reading(lat: float, lon: float) -> Dict[str, Any]:
@@ -125,8 +153,8 @@ async def fetch_reading(lat: float, lon: float) -> Dict[str, Any]:
 
 async def publish_reading(city: Dict[str, Any], reading: Dict[str, Any]):
     """Publish one reading to the durable queue. Fire-and-forget: if the
-    broker is down the message is dropped this round and the next sweep will
-    produce a fresh one — the reading is a snapshot, not a command."""
+    broker is down the message is dropped this round and the next sweep
+    produces a fresh one — a reading is a snapshot, not a command."""
     event = {
         "event_time": datetime.utcnow().isoformat(),
         "path": "/weather",
@@ -152,14 +180,13 @@ async def publish_reading(city: Dict[str, Any], reading: Dict[str, Any]):
 
 
 async def poll_once():
-    """One sweep of the whole watch list."""
+    """One sweep over every configured city."""
     global last_sweep, sweep_count
-    cities = await load_watch_list()
+    if len(resolved_cities) < len(WATCHED_CITIES):
+        await resolve_all_cities()
+
     now = datetime.utcnow()
-    for city in cities:
-        name = city.get("name")
-        if not name:
-            continue
+    for name, city in list(resolved_cities.items()):
         last = last_recorded_at.get(name)
         if last and (now - last).total_seconds() < MIN_RECORD_INTERVAL_SECONDS:
             continue
@@ -186,6 +213,7 @@ async def poll_loop():
 @app.on_event("startup")
 async def startup():
     global _poll_task
+    await resolve_all_cities()
     _poll_task = asyncio.create_task(poll_loop())
 
 
@@ -199,13 +227,14 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
-    """Observability only — this endpoint reports what the fetcher has been
-    doing, it never triggers a fetch."""
+    """Observability only — reports what the fetcher has been doing. It never
+    triggers a fetch."""
     return {
         "status": "ok",
+        "configured_cities": WATCHED_CITIES,
+        "resolved_cities": sorted(resolved_cities.keys()),
         "poll_interval_seconds": POLL_INTERVAL_SECONDS,
         "min_record_interval_seconds": MIN_RECORD_INTERVAL_SECONDS,
         "sweeps_completed": sweep_count,
         "last_sweep": last_sweep,
-        "cities_seen": sorted(last_recorded_at.keys()),
     }
