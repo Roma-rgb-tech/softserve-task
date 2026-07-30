@@ -1,0 +1,20 @@
+# Fetcher VM: the only component that talks to the public weather API.
+#
+# It polls on its own clock — nothing in the UI or the backend can make it
+# fetch — and publishes every reading to RabbitMQ. The port is published only
+# so /health can be inspected; the collection path itself is one-directional
+# into the queue.
+
+services:
+  fetcher:
+    build:
+      context: ../../fetcher-service
+    image: fetcher-service
+    restart: unless-stopped
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      WATCHED_CITIES: ${WATCHED_CITIES}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS}
+      MIN_RECORD_INTERVAL_SECONDS: ${MIN_RECORD_INTERVAL_SECONDS}
+    ports:
+      - "8002:8002"
