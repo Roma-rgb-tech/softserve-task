@@ -10,6 +10,7 @@ so a monitoring history cannot be rewritten from the outside.
 import os
 import json
 import asyncio
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 import asyncpg
@@ -48,14 +49,29 @@ async def _init_connection(conn):
     )
 
 
+def _parse_event_time(raw):
+    """The collection time comes from the fetcher inside the message. It must
+    survive the queue: if the consumer was down for a while, every backlogged
+    message would otherwise be stamped with the moment we drained the queue,
+    and the real collection times would be lost."""
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
 async def persist_event(payload: dict):
     """The single write path. Only the RabbitMQ consumer calls this — nothing
     over HTTP can insert, update or remove a row."""
     global pool
+    collected_at = _parse_event_time(payload.get("event_time"))
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO requests_history(event_time, path, client_ip, query_params, response_status, response_body) "
-            "VALUES (now(), $1, $2, $3::jsonb, $4, $5::jsonb)",
+            "VALUES (COALESCE($1, now()), $2, $3, $4::jsonb, $5, $6::jsonb)",
+            collected_at,
             payload.get("path"),
             payload.get("client_ip"),
             payload.get("query_params") or {},

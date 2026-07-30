@@ -301,7 +301,7 @@
     if(!r) return 'cloudy';
     const c=r.weathercode, day=r.is_day!==0;
     if(c===0) return day?'clear-day':'clear-night';
-    if([1,2,3].includes(c)) return 'cloudy';
+    if([2,3].includes(c)) return 'cloudy';
     if([45,48].includes(c)) return 'fog';
     if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(c)) return 'rain';
     if([71,73,75,77,85,86].includes(c)) return 'snow';
