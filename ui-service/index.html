@@ -462,7 +462,7 @@
       if(!res.ok) throw 0;
       const j=await res.json();
       for(const [name,entry] of Object.entries(j.cities||{})) state[name]=entry.payload;
-      renderCards(); renderHero();
+      renderHero(); renderCards(); loadChart();
     }catch(e){ console.error('latest',e); }
   }
 
