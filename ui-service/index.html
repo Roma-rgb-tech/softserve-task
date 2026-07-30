@@ -141,11 +141,7 @@
     border:1px solid var(--glass-line); border-radius:var(--r); box-shadow:var(--shadow);
     padding:22px 24px; margin-bottom:26px;
   }
-  .chartbox{ height:230px; margin-top:8px; position:relative; }
-  .chart-note{
-    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    text-align:center; color:var(--ink-faint); font-size:0.9rem; padding:0 20px;
-  }
+  .chartbox{ height:230px; margin-top:8px; }
   .hint{ color:var(--ink-faint); font-size:0.78rem; margin-top:12px; }
 
   table{ width:100%; border-collapse:collapse; font-size:0.85rem; }
@@ -231,7 +227,7 @@
 
   <div class="panel">
     <div class="shead" style="margin-left:0;">
-      <h2>Temperature over time <span id="chartCityLbl" style="font-family:'IBM Plex Mono',monospace;font-size:0.74rem;color:var(--ink-faint);"></span></h2>
+      <h2>Temperature over time</h2>
       <div class="ctrls">
         <label>Period</label>
         <select id="periodSel">
@@ -241,11 +237,8 @@
         </select>
       </div>
     </div>
-    <div class="chartbox">
-      <canvas id="chart"></canvas>
-      <div class="chart-note" id="chartNote" style="display:none;"></div>
-    </div>
-    <div class="hint">One line per city would overlap, so the chart follows the featured city — tap another card above to switch it. Readings arrive through RabbitMQ and are stored by the history service; your choices are saved to your session.</div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="hint">Readings arrive through RabbitMQ and are stored by the history service. Your period choice is saved to your session.</div>
   </div>
 
   <div class="panel">
@@ -308,9 +301,7 @@
     if(!r) return 'cloudy';
     const c=r.weathercode, day=r.is_day!==0;
     if(c===0) return day?'clear-day':'clear-night';
-    if(c===1) return day?'mostly-clear':'clear-night';   // mainly clear
-    if(c===2) return 'partly-cloudy';
-    if(c===3) return 'overcast';
+    if([1,2,3].includes(c)) return 'cloudy';
     if([45,48].includes(c)) return 'fog';
     if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(c)) return 'rain';
     if([71,73,75,77,85,86].includes(c)) return 'snow';
@@ -320,14 +311,9 @@
 
   // page background responds to the featured city's sky
   const PALETTE = {
-    'clear-day':    ['#a8d8f0','#d5edfb','#fff6e8'],
-    'clear-night':  ['#8fa4c8','#c3cfe4','#f2eef4'],
-    // Codes 1/2/3 used to share one grey. Mainly-clear should read as a
-    // bright day, overcast as a flat one, so they get their own ramps.
-    'mostly-clear': ['#aedaf0','#daecf9','#fff4e6'],
-    'partly-cloudy':['#b6d0e2','#dbe8f2','#fbf7f0'],
-    overcast:       ['#c2cedb','#dfe7ef','#f7f6f3'],
-    cloudy:         ['#c2cedb','#dfe7ef','#f7f6f3'],
+    'clear-day':  ['#a8d8f0','#d5edfb','#fff6e8'],
+    'clear-night':['#8fa4c8','#c3cfe4','#f2eef4'],
+    cloudy:       ['#c2cedb','#dfe7ef','#f7f6f3'],
     fog:          ['#cbd2d8','#e3e7ea','#f6f5f2'],
     rain:         ['#a9bfd2','#cfdde8','#eff3f2'],
     snow:         ['#c8d8e6','#e4eef6','#fbfcfd'],
@@ -346,9 +332,6 @@
     const sun='#e8a33d', moon='#7d8db0', cl='#ffffff', clS='#b8c6d6', rn='#6da8c9', sw='#a9c8dd', bolt='#e8c53d';
     if(kind==='clear-day') return `<circle cx="12" cy="12" r="5" fill="${sun}"/><g stroke="${sun}" stroke-width="1.7" stroke-linecap="round"><path d="M12 2.4v2.8M12 18.8v2.8M2.4 12h2.8M18.8 12h2.8M5.2 5.2l2 2M16.8 16.8l2 2M5.2 18.8l2-2M16.8 7.2l2-2"/></g>`;
     if(kind==='clear-night') return `<path d="M20 14.6A8.2 8.2 0 119.6 3.4 6.4 6.4 0 0020 14.6z" fill="${moon}"/>`;
-    if(kind==='mostly-clear') return `<circle cx="11" cy="10" r="4.6" fill="${sun}"/><g stroke="${sun}" stroke-width="1.5" stroke-linecap="round"><path d="M11 2.6v2M3.6 10h2M17 4l1.4-1.4M4.6 4L3.2 2.6"/></g><path d="M11 20a3.2 3.2 0 01.3-6.37A3.9 3.9 0 0118.3 16a2.9 2.9 0 01-.5 4H11z" fill="${cl}" stroke="${clS}" stroke-width="1"/>`;
-    if(kind==='partly-cloudy') return `<circle cx="9" cy="8.5" r="3.6" fill="${sun}"/><path d="M8 18.5a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 13a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1" stroke-linejoin="round"/>`;
-    if(kind==='overcast') return `<path d="M7 16.5a4 4 0 01.4-7.96A4.8 4.8 0 0116.1 11a3.6 3.6 0 01-.6 5.5H7z" fill="${cl}" stroke="${clS}" stroke-width="1.1" stroke-linejoin="round"/><path d="M11 19.5a3 3 0 01.3-5.9" stroke="${clS}" stroke-width="1" fill="none"/>`;
     if(kind==='cloudy') return `<circle cx="9" cy="8.5" r="3.6" fill="${sun}"/><path d="M8 18.5a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 13a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1" stroke-linejoin="round"/>`;
     if(kind==='fog') return `<path d="M8 15a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 9.5a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1"/><g stroke="${clS}" stroke-width="1.5" stroke-linecap="round"><path d="M5 18h14M7 21h10"/></g>`;
     if(kind==='rain') return `<path d="M8 14a4 4 0 01.4-7.96A4.8 4.8 0 0117.1 8.5a3.6 3.6 0 01-.6 5.5H8z" fill="${cl}" stroke="${clS}" stroke-width="1.1"/><g stroke="${rn}" stroke-width="1.8" stroke-linecap="round"><path d="M9 17l-1 3.4M13 17l-1 3.4M17 17l-1 3.4"/></g>`;
@@ -371,9 +354,7 @@
     </style>`;
     if(kind==='clear-day') return `<svg viewBox="0 0 128 128">${anim}<g class="hs"><g stroke="#e8a33d" stroke-width="4" stroke-linecap="round"><path d="M64 12v14M64 86v14M12 56h14M102 56h14M27 19l10 10M91 83l10 10M27 93l10-10M91 29l10-10"/></g></g><circle cx="64" cy="56" r="24" fill="#efb45c"/><circle cx="57" cy="49" r="8" fill="#f7d18f" opacity=".55"/></svg>`;
     if(kind==='clear-night') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M92 74a34 34 0 11-42-46 27 27 0 0042 46z" fill="#8b9cc0"/></g><g fill="#fff"><circle cx="26" cy="26" r="2.2"/><circle cx="102" cy="34" r="1.8"/><circle cx="40" cy="98" r="1.6"/><circle cx="96" cy="94" r="2"/></g></svg>`;
-    if(kind==='mostly-clear') return `<svg viewBox="0 0 128 128">${anim}<g class="hs"><g stroke="#e8a33d" stroke-width="3.5" stroke-linecap="round"><path d="M56 14v12M56 78v12M14 52h12M86 52h12M25 21l8 8M79 71l8 8M25 83l8-8M79 33l8-8"/></g></g><circle cx="56" cy="52" r="21" fill="#efb45c"/><g class="hf"><path d="M56 100a14 14 0 011.4-27.8A17 17 0 0189 78a12 12 0 01-2 22H56z" fill="#fff" stroke="#c3d1e0" stroke-width="2.2" stroke-linejoin="round"/></g></svg>`;
-    if(kind==='overcast') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M34 62a16 16 0 011.6-31.8A20 20 0 0173 36a14 14 0 01-2.3 26H34z" fill="#e9eef4" stroke="#b9c6d4" stroke-width="2.2" stroke-linejoin="round"/><path d="M46 96a18 18 0 011.8-35.8A22 22 0 0188 68a16 16 0 01-2.6 28H46z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5" stroke-linejoin="round"/></g></svg>`;
-    if(kind==='partly-cloudy'||kind==='cloudy') return `<svg viewBox="0 0 128 128">${anim}<circle cx="46" cy="42" r="18" fill="#efb45c"/><g class="hf"><path d="M40 90a18 18 0 011.8-35.8A22 22 0 0182 62a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5" stroke-linejoin="round"/></g></svg>`;
+    if(kind==='cloudy') return `<svg viewBox="0 0 128 128">${anim}<circle cx="46" cy="42" r="18" fill="#efb45c"/><g class="hf"><path d="M40 90a18 18 0 011.8-35.8A22 22 0 0182 62a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5" stroke-linejoin="round"/></g></svg>`;
     if(kind==='fog') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 72a18 18 0 011.8-35.8A22 22 0 0182 44a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5"/></g><g stroke="#c3d1e0" stroke-width="4" stroke-linecap="round" opacity=".8"><path d="M26 88h76M36 102h56M30 116h68"/></g></svg>`;
     if(kind==='rain') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 70a18 18 0 011.8-35.8A22 22 0 0182 42a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5"/></g><g stroke="#6da8c9" stroke-width="4" stroke-linecap="round">${[0,1,2,3].map(i=>`<path class="hd" style="animation-delay:${i*0.22}s" d="M${44+i*13} 82v9"/>`).join('')}</g></svg>`;
     if(kind==='snow') return `<svg viewBox="0 0 128 128">${anim}<g class="hf"><path d="M40 68a18 18 0 011.8-35.8A22 22 0 0182 40a16 16 0 01-2.6 28H40z" fill="#fff" stroke="#c3d1e0" stroke-width="2.5"/></g><g fill="#a9c8dd">${[0,1,2,3].map(i=>`<circle class="hd" style="animation-delay:${i*0.34}s" cx="${45+i*13}" cy="84" r="4"/>`).join('')}</g></svg>`;
@@ -448,7 +429,7 @@
     }).join('');
     cards.querySelectorAll('.card[data-city]').forEach(el=>el.addEventListener('click',async()=>{
       await save({featured:el.dataset.city});
-      renderHero(); renderCards(); loadChart();
+      renderHero(); renderCards();
     }));
   }
 
@@ -530,53 +511,27 @@
   }
 
   const SPAN={'24h':864e5,'7d':6048e5,'30d':2592e6};
-
-  // Which city the chart is drawing. Mixing several cities into one line
-  // produces a sawtooth (they sit at different temperatures), so the chart
-  // follows whichever card is featured.
-  function chartCityName(){
-    if(prefs.featured && cityNames.includes(prefs.featured)) return prefs.featured;
-    return cityNames.find(n=>state[n]) || cityNames[0] || '';
-  }
-
   async function loadChart(){
-    const city = chartCityName();
-    $('chartCityLbl').textContent = city ? `· ${city}` : '';
-    if(!city) return;
     try{
-      const res=await fetch(`/api/history/recent?limit=500&offset=0&city=${encodeURIComponent(city)}`);
-      if(!res.ok) return;
+      const res=await fetch('/api/history/recent?limit=500&offset=0'); if(!res.ok) return;
       const all=await res.json();
       const cut=Date.now()-(SPAN[prefs.period]||SPAN['24h']);
       const pts=all.filter(r=>new Date(r.event_time).getTime()>=cut)
                    .filter(r=>(r.response_body||{}).temperature!=null)
                    .sort((a,b)=>new Date(a.event_time)-new Date(b.event_time));
-      const note=$('chartNote');
-      if(pts.length<2){
-        if(chart){ chart.destroy(); chart=null; }
-        note.style.display='block';
-        note.textContent = pts.length===0
-          ? `No readings for ${city} in this period yet.`
-          : `Only one reading for ${city} so far — the next one arrives within the hour.`;
-        $('chart').style.display='none';
-        return;
-      }
-      note.style.display='none';
-      $('chart').style.display='block';
-
       const ctx=$('chart').getContext('2d');
       const grad=ctx.createLinearGradient(0,0,0,230);
       grad.addColorStop(0,'rgba(224,112,90,0.32)'); grad.addColorStop(1,'rgba(224,112,90,0.02)');
       if(chart) chart.destroy();
       chart=new Chart(ctx,{
         type:'line',
-        data:{ labels:pts.map(r=>new Date(r.event_time).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})),
+        data:{ labels:pts.map(r=>new Date(r.event_time).toLocaleString()),
                datasets:[{ data:pts.map(r=>r.response_body.temperature),
                  borderColor:'#e0705a', backgroundColor:grad, borderWidth:2.4,
                  tension:.38, fill:true, pointRadius:pts.length>50?0:3,
                  pointBackgroundColor:'#fff', pointBorderColor:'#e0705a', pointBorderWidth:2 }] },
         options:{ responsive:true, maintainAspectRatio:false,
-          scales:{ x:{ ticks:{color:'#8b9aad',font:{size:10},maxTicksLimit:8,maxRotation:0,autoSkip:true}, grid:{display:false} },
+          scales:{ x:{ display:pts.length<=40, ticks:{color:'#8b9aad',font:{size:10}}, grid:{display:false} },
                    y:{ ticks:{color:'#8b9aad',font:{size:11},callback:v=>v+'°'}, grid:{color:'rgba(255,255,255,0.7)'}, border:{display:false} } },
           plugins:{ legend:{display:false},
             tooltip:{ backgroundColor:'rgba(255,255,255,0.95)', titleColor:'#1f2d3d', bodyColor:'#1f2d3d',
