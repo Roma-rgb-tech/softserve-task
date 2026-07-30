@@ -446,12 +446,7 @@
   // The city set is fixed by deployment config; the UI only reads it.
   async function loadCities(){
     try{
-       const city = (prefs.featured && cityNames.includes(prefs.featured))
-                 ? prefs.featured
-                 : (cityNames.find(n=>state[n]) || cityNames[0] || '');
-      if(!city) return;
-      const res=await fetch(`/api/history/recent?limit=500&offset=0&city=${encodeURIComponent(city)}`);
-      if(!res.ok) return;
+      const res=await fetch('/api/cities'); if(!res.ok) throw 0;
       const {cities=[]}=await res.json();
       cityNames=cities;
       for(const n of cityNames) if(!(n in state)) state[n]=null;
@@ -467,7 +462,7 @@
       if(!res.ok) throw 0;
       const j=await res.json();
       for(const [name,entry] of Object.entries(j.cities||{})) state[name]=entry.payload;
-      renderHero(); renderCards(); loadChart();
+      renderCards(); renderHero();
     }catch(e){ console.error('latest',e); }
   }
 
