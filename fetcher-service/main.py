@@ -1,20 +1,20 @@
 """Fetcher service.
 
-The only component in the system that talks to the public weather APIs. It
-runs on its own clock — nothing in the UI or the backend can make it fetch on
-demand — reads the watch list from the History service, and publishes each
-reading to RabbitMQ. History consumes from that queue and persists.
+The only component in the system that talks to the public weather APIs.
+
+The city list is fixed by configuration (`WATCHED_CITIES`) — nothing at
+runtime can change it, and no user action can make this service fetch. It
+resolves those names to coordinates once at startup, then polls on its own
+clock and publishes every reading to RabbitMQ.
 
     Fetcher --(AMQP: weather.events)--> History --> Postgres
-       |
-       +--(HTTP read: which cities?)--> History
 """
 
 import os
 import json
 import asyncio
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import httpx
 import aio_pika
@@ -22,18 +22,23 @@ from fastapi import FastAPI
 
 app = FastAPI()
 
-HISTORY_BASE = os.getenv("HISTORY_BASE", "http://history:8001")
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 AIR_QUALITY_API = "https://air-quality-api.open-meteo.com/v1/air-quality"
+GEOCODE_API = "https://geocoding-api.open-meteo.com/v1/search"
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
 QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
 
-# How often the whole watch list is swept.
+# The monitored cities. Deployment configuration, not runtime state.
+WATCHED_CITIES: List[str] = [
+    c.strip() for c in os.getenv("WATCHED_CITIES", "Kyiv,Warsaw,Vilnius").split(",") if c.strip()
+]
+
+# One sweep per hour by default.
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "3600"))
-# Never record two readings for the same city closer together than this,
-# regardless of how often the sweep runs.
-MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "600"))
+# Never record two readings for the same city closer together than this, so a
+# restart loop can't flood the history with near-identical rows.
+MIN_RECORD_INTERVAL_SECONDS = int(os.getenv("MIN_RECORD_INTERVAL_SECONDS", "3000"))
 
 CURRENT_WEATHER_FIELDS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,"
@@ -45,36 +50,88 @@ _rmq_connection: Optional[aio_pika.RobustConnection] = None
 _rmq_channel: Optional[aio_pika.Channel] = None
 _poll_task: Optional[asyncio.Task] = None
 
+# Kept for /health so a stalled collector is visible instead of silent.
+last_error: Optional[str] = None
+last_published: Optional[str] = None
+publish_failures = 0
+
+# name -> {"name", "latitude", "longitude"}, resolved once at startup
+resolved_cities: Dict[str, Dict[str, Any]] = {}
 last_recorded_at: Dict[str, datetime] = {}
 last_sweep: Optional[str] = None
 sweep_count = 0
 
 
-async def get_rmq_channel() -> Optional[aio_pika.Channel]:
-    """Lazily connect/reconnect and cache the channel. Returns None when the
-    broker is unreachable, which callers treat as skip-this-round."""
+async def geocode_city(name: str) -> Optional[Dict[str, Any]]:
+    """Resolve one city name to coordinates. Runs only at startup — the list
+    is fixed, so this is a one-off resolution of configuration, not something
+    a user can trigger."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            r = await client.get(GEOCODE_API, params={"name": name, "count": 1})
+            j = r.json()
+        except Exception:
+            return None
+    results = (j or {}).get("results") or []
+    if not results:
+        return None
+    top = results[0]
+    return {
+        "name": top.get("name") or name,
+        "latitude": top.get("latitude"),
+        "longitude": top.get("longitude"),
+    }
+
+
+async def resolve_all_cities():
+    """Fill `resolved_cities` from the configured names. Retries the whole set
+    until every city is resolved, because without coordinates a city simply
+    cannot be polled."""
+    for name in WATCHED_CITIES:
+        if name in resolved_cities:
+            continue
+        geo = await geocode_city(name)
+        if geo and geo["latitude"] is not None:
+            resolved_cities[geo["name"]] = geo
+
+
+async def drop_rmq():
+    """Forget the cached connection so the next call builds a fresh one."""
     global _rmq_connection, _rmq_channel
-    if _rmq_channel and not _rmq_channel.is_closed:
+    _rmq_channel = None
+    if _rmq_connection:
+        try:
+            await _rmq_connection.close()
+        except Exception:
+            pass
+    _rmq_connection = None
+
+
+async def get_rmq_channel() -> Optional[aio_pika.Channel]:
+    """Return a usable channel, opening one if needed.
+
+    `is_closed` alone is not enough: a channel can report open while its
+    transport is already gone ("No active transport in channel"), and a
+    cached one in that state fails every publish forever. Anything that
+    doesn't look healthy is thrown away and rebuilt."""
+    global _rmq_connection, _rmq_channel, last_error
+    if (_rmq_channel is not None
+            and not _rmq_channel.is_closed
+            and _rmq_connection is not None
+            and not _rmq_connection.is_closed):
         return _rmq_channel
+
+    await drop_rmq()
     try:
         _rmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
         _rmq_channel = await _rmq_connection.channel()
         await _rmq_channel.declare_queue(QUEUE_NAME, durable=True)
         return _rmq_channel
-    except Exception:
+    except Exception as e:
+        last_error = f"connect: {e}"
+        print(f"[fetcher] cannot reach broker: {e}", flush=True)
+        await drop_rmq()
         return None
-
-
-async def load_watch_list() -> list:
-    """Read the cities to poll from the History service. A sync HTTP read is
-    fine here: it's our own service, and a queue would be the wrong shape for
-    a request/response lookup."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp = await client.get(f"{HISTORY_BASE}/cities")
-            return resp.json()
-        except Exception:
-            return []
 
 
 async def fetch_reading(lat: float, lon: float) -> Dict[str, Any]:
@@ -123,12 +180,15 @@ async def fetch_reading(lat: float, lon: float) -> Dict[str, Any]:
     }
 
 
-async def publish_reading(city: Dict[str, Any], reading: Dict[str, Any]):
-    """Publish one reading to the durable queue. Fire-and-forget: if the
-    broker is down the message is dropped this round and the next sweep will
-    produce a fresh one — the reading is a snapshot, not a command."""
+async def publish_reading(city: Dict[str, Any], reading: Dict[str, Any]) -> bool:
+    """Publish one reading to the durable queue.
+
+    Tries twice: a channel that went stale between sweeps only reveals itself
+    on the failed publish, and rebuilding it there is what stops a single bad
+    channel from silently ending collection for good."""
+    global last_error, last_published, publish_failures
     event = {
-        "event_time": datetime.utcnow().isoformat(),
+        "event_time": datetime.now(timezone.utc).isoformat(),
         "path": "/weather",
         "client_ip": "fetcher",
         "query_params": {
@@ -139,53 +199,72 @@ async def publish_reading(city: Dict[str, Any], reading: Dict[str, Any]):
         "response_status": reading.get("weather_status", 200),
         "response_body": reading,
     }
-    channel = await get_rmq_channel()
-    if not channel:
-        return
-    await channel.default_exchange.publish(
-        aio_pika.Message(
-            body=json.dumps(event).encode(),
-            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-        ),
-        routing_key=QUEUE_NAME,
+    message = aio_pika.Message(
+        body=json.dumps(event).encode(),
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
     )
+
+    for attempt in (1, 2):
+        channel = await get_rmq_channel()
+        if not channel:
+            break
+        try:
+            await channel.default_exchange.publish(message, routing_key=QUEUE_NAME)
+            last_published = datetime.now(timezone.utc).isoformat()
+            last_error = None
+            return True
+        except Exception as e:
+            last_error = f"publish {city['name']} (attempt {attempt}): {e}"
+            print(f"[fetcher] publish failed for {city['name']}: {e}", flush=True)
+            await drop_rmq()
+
+    publish_failures += 1
+    return False
 
 
 async def poll_once():
-    """One sweep of the whole watch list."""
-    global last_sweep, sweep_count
-    cities = await load_watch_list()
+    """One sweep over every configured city."""
+    global last_sweep, sweep_count, last_error
+    if len(resolved_cities) < len(WATCHED_CITIES):
+        await resolve_all_cities()
+
     now = datetime.utcnow()
-    for city in cities:
-        name = city.get("name")
-        if not name:
-            continue
+    for name, city in list(resolved_cities.items()):
         last = last_recorded_at.get(name)
         if last and (now - last).total_seconds() < MIN_RECORD_INTERVAL_SECONDS:
             continue
         try:
             reading = await fetch_reading(city["latitude"], city["longitude"])
-            await publish_reading(city, reading)
-            last_recorded_at[name] = datetime.utcnow()
-        except Exception:
+            # Only mark the city as recorded if the message actually left, so
+            # a broker outage doesn't create an hour-long hole in the history.
+            if await publish_reading(city, reading):
+                last_recorded_at[name] = datetime.utcnow()
+        except Exception as e:
             # One bad city must not stop the sweep for the others.
+            last_error = f"fetch {name}: {e}"
+            print(f"[fetcher] fetch failed for {name}: {e}", flush=True)
             continue
     last_sweep = now.isoformat()
     sweep_count += 1
 
 
 async def poll_loop():
+    global last_error
     while True:
         try:
             await poll_once()
-        except Exception:
-            pass
+        except Exception as e:
+            # The loop itself must never die: a sweep that raises still has to
+            # be followed by the next one an hour later.
+            last_error = f"sweep: {e}"
+            print(f"[fetcher] sweep failed: {e}", flush=True)
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
 @app.on_event("startup")
 async def startup():
     global _poll_task
+    await resolve_all_cities()
     _poll_task = asyncio.create_task(poll_loop())
 
 
@@ -199,13 +278,18 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
-    """Observability only — this endpoint reports what the fetcher has been
-    doing, it never triggers a fetch."""
+    """Observability only — reports what the fetcher has been doing. It never
+    triggers a fetch."""
     return {
-        "status": "ok",
+        "status": "degraded" if last_error else "ok",
+        "configured_cities": WATCHED_CITIES,
+        "resolved_cities": sorted(resolved_cities.keys()),
         "poll_interval_seconds": POLL_INTERVAL_SECONDS,
         "min_record_interval_seconds": MIN_RECORD_INTERVAL_SECONDS,
         "sweeps_completed": sweep_count,
         "last_sweep": last_sweep,
-        "cities_seen": sorted(last_recorded_at.keys()),
+        "last_published": last_published,
+        "publish_failures": publish_failures,
+        "last_error": last_error,
+        "broker_connected": bool(_rmq_channel and not _rmq_channel.is_closed),
     }
