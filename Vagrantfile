@@ -1,13 +1,3 @@
-# ---------------------------------------------------------------------------
-# Everything about the machines lives in one dictionary. Adding a fifth VM
-# means adding one entry here — no new config block, no copy-paste.
-# ---------------------------------------------------------------------------
-
-# Your home network. Change these two to match your router, then every VM
-# gets a real address on your LAN and is reachable from your phone/laptop.
-#   BRIDGE_IFACE: run `ifconfig` (macOS) or `ip a` and use the active adapter
-#                 that carries your Wi-Fi/Ethernet traffic, e.g. "en0".
-#   LAN_PREFIX:   the first three octets of your home subnet.
 BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
 LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
@@ -17,9 +7,19 @@ REPO_BRANCH = "roman-chernyshev/weather"
 RABBITMQ_USER = "app"
 RABBITMQ_PASS = "example"
 
-# host octet -> IP, so service URLs below stay readable
+WATCHED_CITIES = "Kyiv,Warsaw,Vilnius"
+
+POLL_INTERVAL_SECONDS       = 3600
+MIN_RECORD_INTERVAL_SECONDS = 3000
+
+
 def lan(octet)
   "#{LAN_PREFIX}.#{octet}"
+end
+
+
+def node_ip(name)
+  lan(NODES[name][:octet])
 end
 
 NODES = {
@@ -27,7 +27,6 @@ NODES = {
     octet:    200,
     ssh_port: 2222,
     memory:   "1536",
-    # Infra VM: three off-the-shelf images, nothing built from our repo.
     clone:    false,
     run: ->(ip) { <<~SHELL }
       docker rm -f postgres 2>/dev/null || true
@@ -63,7 +62,7 @@ NODES = {
     run: ->(ip) { <<~SHELL }
       docker build -t backend-service /opt/app/backend-service
       docker rm -f backend 2>/dev/null || true
-      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e REDIS_URL=redis://#{node_ip("postgres")}:6379/0 -e WATCHED_CITIES=Kyiv,Lviv backend-service
+      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e REDIS_URL=redis://#{node_ip("postgres")}:6379/0 -e WATCHED_CITIES=#{WATCHED_CITIES} backend-service
     SHELL
   },
 
@@ -73,10 +72,12 @@ NODES = {
     memory:   "1024",
     clone:    true,
     service:  "fetcher-service",
+    # No HISTORY_BASE here: the fetcher owns its city list from config and
+    # publishes to RabbitMQ. It never talks to the history service.
     run: ->(ip) { <<~SHELL }
       docker build -t fetcher-service /opt/app/fetcher-service
       docker rm -f fetcher 2>/dev/null || true
-      docker run -d --name fetcher --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/ -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 fetcher-service
+      docker run -d --name fetcher --restart unless-stopped --network host -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/ -e WATCHED_CITIES=#{WATCHED_CITIES} -e POLL_INTERVAL_SECONDS=#{POLL_INTERVAL_SECONDS} -e MIN_RECORD_INTERVAL_SECONDS=#{MIN_RECORD_INTERVAL_SECONDS} fetcher-service
     SHELL
   },
 
@@ -93,10 +94,6 @@ NODES = {
     SHELL
   },
 }
-
-def node_ip(name)
-  lan(NODES[name][:octet])
-end
 
 # /etc/hosts entries so the VMs can also address each other by name
 HOSTS_FILE = NODES.map { |name, c|
@@ -130,9 +127,6 @@ Vagrant.configure("2") do |config|
     config.vm.define name do |node|
       node.vm.hostname = name
 
-      # The qemu plugin only builds its second NIC from private_network;
-      # net_mode :vmnet_bridged is what puts that NIC on the real home LAN,
-      # so this address answers from any device on the router.
       node.vm.network "private_network", ip: ip
 
       node.vm.provider "qemu" do |qe|
