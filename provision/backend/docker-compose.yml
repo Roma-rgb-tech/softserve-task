@@ -1,9 +1,3 @@
-# Backend VM: the only service the UI talks to.
-#
-# It holds UI session state in Redis and serves stored readings by querying
-# the history service. It has no route to any public weather API — that
-# belongs to the fetcher — and exposes no way to modify or delete history.
-
 services:
   backend:
     build:
