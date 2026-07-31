@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Brings up one VM's compose stack.
-#
-#   deploy.sh <service-dir>
-#
-# The directory is expected to hold a docker-compose.yml plus a .env written
-# by the Vagrant provisioner. Running from inside it means Compose picks that
-# .env up on its own and uses the directory name as the project name.
 set -euo pipefail
 
 SERVICE_DIR="${1:?usage: deploy.sh <service-dir>}"

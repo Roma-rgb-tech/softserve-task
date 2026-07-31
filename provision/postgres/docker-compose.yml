@@ -1,9 +1,3 @@
-# Infrastructure VM: the stateful pieces everything else talks to.
-#
-# Ports are published to the VM's interfaces so the other VMs can reach them
-# over the LAN — these three are the only containers in the project that
-# accept connections from outside their own machine.
-
 services:
   postgres:
     image: postgres:15
@@ -15,7 +9,6 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # Named volume, so re-provisioning the VM doesn't wipe the history.
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
