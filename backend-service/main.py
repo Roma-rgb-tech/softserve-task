@@ -1,7 +1,8 @@
 """Backend service.
 
-The only service the UI talks to. It does two things:
+The only service the UI talks to. It does three things:
 
+  * consumes readings from RabbitMQ and hands them to History for storage
   * session state — ephemeral UI preferences in Redis, keyed by a cookie
   * reads — serves stored readings by proxying the History service
 
@@ -13,16 +14,27 @@ exposes no way to modify or delete history: the store is append-only.
 import os
 import json
 import uuid
+import asyncio
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import httpx
+import aio_pika
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Query, Request, Response, HTTPException
 
 app = FastAPI()
 
 HISTORY_BASE = os.getenv("HISTORY_BASE", "http://history:8001")
+
+# RabbitMQ: the fetcher publishes each reading here and this service consumes
+# it. The consumer is a background task inside this process — a piece of code,
+# not a separate container, so no extra service-to-service plumbing is needed
+# to get a message from the queue into storage.
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
+QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
+_rmq_connection = None
+_consumer_task: Optional[asyncio.Task] = None
 
 # Redis: purely ephemeral UI session state (chart period, filters, selected
 # city) — never business data, and never user accounts.
@@ -38,14 +50,65 @@ WATCHED_CITIES: List[str] = [
 ]
 
 
+async def store_reading(payload: dict):
+    """Hand one consumed reading to History, which owns the database. This
+    service has no DB driver of its own on purpose: persistence stays behind
+    a single owner."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(f"{HISTORY_BASE}/history/events", json=payload)
+        resp.raise_for_status()
+
+
+async def consume_weather_events():
+    """Background consumer. This is the asynchronous half of the write path:
+    the fetcher publishes to `weather.events` and we pick messages up whenever
+    we're alive, so a restart on either side never loses a reading — RabbitMQ
+    holds the durable message until we come back.
+
+    A message is only acked once History has stored it, so a failure here
+    leaves the reading in the queue rather than dropping it."""
+    global _rmq_connection
+    while True:
+        try:
+            _rmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            async with _rmq_connection:
+                channel = await _rmq_connection.channel()
+                await channel.set_qos(prefetch_count=10)
+                queue = await channel.declare_queue(QUEUE_NAME, durable=True)
+                async for message in queue:
+                    try:
+                        await store_reading(json.loads(message.body.decode()))
+                        await message.ack()
+                    except json.JSONDecodeError:
+                        # Malformed message: acking drops it, since redelivery
+                        # would fail the same way forever.
+                        await message.ack()
+                    except Exception as e:
+                        # History unreachable or erroring — requeue and retry,
+                        # rather than losing the reading.
+                        print(f"[backend] could not store reading: {e}", flush=True)
+                        await message.nack(requeue=True)
+                        await asyncio.sleep(5)
+        except Exception as e:
+            # Broker not reachable yet (still booting, say) — back off and
+            # retry the connection itself, not each individual message.
+            print(f"[backend] broker unavailable: {e}", flush=True)
+            await asyncio.sleep(5)
+
+
 @app.on_event("startup")
 async def startup():
-    global redis_client
+    global redis_client, _consumer_task
     redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+    _consumer_task = asyncio.create_task(consume_weather_events())
 
 
 @app.on_event("shutdown")
 async def shutdown():
+    if _consumer_task:
+        _consumer_task.cancel()
+    if _rmq_connection:
+        await _rmq_connection.close()
     if redis_client:
         await redis_client.close()
 

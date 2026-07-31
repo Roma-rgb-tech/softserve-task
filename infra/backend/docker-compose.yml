@@ -1,0 +1,28 @@
+# Backend VM: the only service the UI talks to. It also consumes the
+# weather.events queue and forwards each reading to History for storage.
+#
+# The image is built once and published to the registry (see
+# infra/scripts/publish-images.sh) — the VM only pulls it, so provisioning
+# doesn't spend time compiling dependencies on every run.
+
+services:
+  backend:
+    image: ${REGISTRY_NAMESPACE}/backend-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      HISTORY_BASE: ${HISTORY_BASE}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      REDIS_URL: ${REDIS_URL}
+      WATCHED_CITIES: ${WATCHED_CITIES}
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

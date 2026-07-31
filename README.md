@@ -10,6 +10,10 @@ phone or another laptop on the same router.
 
 ## Architecture
 
+![Architecture](docs/architecture.svg)
+
+The same flow in text:
+
 ```
                                      Open-Meteo (weather · air quality)
                                             ▲
@@ -26,9 +30,9 @@ Browser ──▶ UI (nginx) ──▶ Backend ──▶ Redis│   Fetcher ─�
 | Service | Port | Role |
 |---|---|---|
 | `ui-service` | 80 | Static dashboard served by nginx; reverse-proxies `/api/*` to the backend |
-| `backend-service` | 8000 | UI-facing API: sessions, city registration, history reads. Never calls the weather API |
+| `backend-service` | 8000 | UI-facing API plus the RabbitMQ consumer. Never calls the weather API |
 | `fetcher-service` | 8002 | The only component that calls the public weather API; polls on its own clock and publishes to RabbitMQ |
-| `history-service` | 8001 | Owns persistence: the history rows and the watch list. Consumes from RabbitMQ |
+| `history-service` | 8001 | Owns persistence. Writes arrive from the backend over HTTP |
 | `postgres` | 5432 | Relational store for the request history |
 | `redis` | 6379 | Ephemeral UI session state (no user accounts, no business data) |
 | `rabbitmq` | 5672 / 15672 | Durable `weather.events` queue + management UI |
@@ -50,10 +54,13 @@ which nginx proxies to the backend. Nothing in the page addresses the fetcher, t
 history service, the database, Redis or RabbitMQ.
 
 **Writes are asynchronous, reads are synchronous.** The fetcher publishes each reading to
-the durable `weather.events` queue instead of calling History over HTTP. History consumes
-whenever it is alive — restart either side and RabbitMQ holds the message until the
-consumer comes back. Reads (`/history/recent`, `/history/count`) stay plain HTTP, since a
-queue is one-directional and RPC-over-AMQP would be overkill here.
+the durable `weather.events` queue. The backend consumes it — the consumer is a background
+task inside the backend process, not a separate container — and forwards the reading to
+History, which owns the database. Restart either side and RabbitMQ holds the message until
+the consumer comes back; a message is only acked once History has stored it.
+
+Reads (`/history/recent`, `/history/count`) stay plain HTTP, since a queue is
+one-directional and RPC-over-AMQP would be overkill here.
 
 **Duplicate readings are suppressed.** `MIN_RECORD_INTERVAL_SECONDS` (default 3000)
 means two rows for the same city can never land closer than ~50 minutes apart, however
@@ -105,7 +112,7 @@ fetcher-service/    the only service that calls the public weather API
 history-service/    RabbitMQ consumer + persistence
 ui-service/         nginx + dashboard
 
-provision/
+infra/
   scripts/
     install-docker.sh   Docker Engine + Compose v2, run on every VM
     deploy.sh           writes nothing, just brings one stack up
@@ -119,10 +126,46 @@ provision/
 Each VM owns exactly one compose file and brings up only its own containers —
 there is no cluster-wide orchestration, and no Swarm. The `Vagrantfile` holds
 no deployment logic: it computes LAN addresses, writes each service's `.env`
-next to its compose file, and calls the scripts under `provision/`.
+next to its compose file, and calls the scripts under `infra/`.
 
 Containers publish their ports (`ports:`) rather than sharing the VM's network
 namespace, so each service's surface is explicit in its compose file.
+
+## Publishing images
+
+Service images are built once on your machine and pushed to a registry; the VMs
+only pull them. That keeps provisioning fast — nothing compiles five times over
+— and means every VM runs a byte-identical image.
+
+```bash
+docker login
+./infra/scripts/publish-images.sh          # tags as :latest
+./infra/scripts/publish-images.sh v1.2.0   # or a specific version
+```
+
+Then provision. `IMAGE_TAG` selects which published tag the VMs pull:
+
+```bash
+sudo -E vagrant provision                        # :latest
+IMAGE_TAG=v1.2.0 sudo -E vagrant provision       # a pinned version
+```
+
+Override the namespace with `REGISTRY_NAMESPACE` if you publish elsewhere.
+
+## SSH access
+
+Provisioning creates one login per public key in `infra/keys/` — the filename
+is the username. Each account gets passwordless sudo and `docker` group
+membership, so whoever logs in can inspect containers directly.
+
+```bash
+cp ~/.ssh/id_ed25519.pub infra/keys/roman.pub
+sudo -E vagrant provision
+ssh roman@192.168.88.202
+```
+
+No `vagrant ssh` and no sudo on the host — these are ordinary SSH logins over
+the LAN. See `infra/keys/README.md` for details.
 
 ## Running with Vagrant
 
@@ -219,8 +262,8 @@ Each stack can be rebuilt on its own VM without touching the others:
 
 ```bash
 sudo -E vagrant provision backend        # re-clone, rebuild, restart
-sudo -E vagrant ssh backend -- 'cd /opt/app/provision/backend && docker compose ps'
-sudo -E vagrant ssh backend -- 'cd /opt/app/provision/backend && docker compose logs -f'
+sudo -E vagrant ssh backend -- 'cd /opt/app/infra/backend && docker compose ps'
+sudo -E vagrant ssh backend -- 'cd /opt/app/infra/backend && docker compose logs -f'
 ```
 
 The provisioner clones this repo from GitHub (`REPO_BRANCH`), not from your
@@ -292,8 +335,8 @@ curl -s "http://<prefix>.52:8000/history/recent?limit=1"   # Poltava is there
 | Variable | Service | Default | Purpose |
 |---|---|---|---|
 | `DATABASE_URL` | history | set by Vagrant/compose | PostgreSQL connection string |
-| `RABBITMQ_URL` | history, fetcher | set by Vagrant/compose | AMQP broker URL |
-| `WEATHER_EVENTS_QUEUE` | history, fetcher | `weather.events` | Queue name for the write path |
+| `RABBITMQ_URL` | backend, fetcher | set by Vagrant/compose | AMQP broker URL |
+| `WEATHER_EVENTS_QUEUE` | backend, fetcher | `weather.events` | Queue name for the write path |
 | `HISTORY_BASE` | backend | `http://history:8001` | Where the backend sends its HTTP reads |
 | `REDIS_URL` | backend | `redis://postgres:6379/0` | Session store |
 | `SESSION_TTL_SECONDS` | backend | `2592000` (30 days) | Sliding session lifetime |
@@ -303,7 +346,7 @@ curl -s "http://<prefix>.52:8000/history/recent?limit=1"   # Poltava is there
 | `BACKEND_HOST` | ui | `backend` | Rendered into `nginx.conf` at container start via `envsubst` |
 
 All of these are written by the Vagrant provisioner into
-`provision/<service>/.env`, which Compose reads automatically. The compose
+`infra/<service>/.env`, which Compose reads automatically. The compose
 files themselves contain no addresses or credentials.
 
 ## Database inspection

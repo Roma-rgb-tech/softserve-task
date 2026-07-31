@@ -1,0 +1,23 @@
+# History VM: owns persistence. Readings arrive from the backend over HTTP and
+# are appended to Postgres; reads are served back to the backend.
+#
+# This service does not talk to the broker — the backend consumes the queue.
+
+services:
+  history:
+    image: ${REGISTRY_NAMESPACE}/history-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

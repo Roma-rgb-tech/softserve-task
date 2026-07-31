@@ -15,7 +15,7 @@ BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
 LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
-REPO_BRANCH = "roman-chernyshev/dev-weather"
+REPO_BRANCH = "roman-chernyshev/weather"
 
 APP_DIR = "/opt/app"
 
@@ -24,6 +24,11 @@ POSTGRES_PASS = "example"
 POSTGRES_DB   = "history_db"
 RABBITMQ_USER = "app"
 RABBITMQ_PASS = "example"
+
+# Images are built once on the host and pushed to the registry; the VMs only
+# pull them. Publish with infra/scripts/publish-images.sh before provisioning.
+REGISTRY_NAMESPACE = ENV.fetch("REGISTRY_NAMESPACE", "tripletsrc")
+IMAGE_TAG          = ENV.fetch("IMAGE_TAG", "latest")
 
 # The cities this deployment monitors. The fetcher collects them; the backend
 # tells the UI which cards to render. Nothing at runtime can change the list.
@@ -70,8 +75,9 @@ NODES = {
     clone:    true,
     env: -> {
       {
+        "REGISTRY_NAMESPACE" => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"          => IMAGE_TAG,
         "DATABASE_URL" => "postgresql://#{POSTGRES_USER}:#{POSTGRES_PASS}@#{node_ip("postgres")}:5432/#{POSTGRES_DB}",
-        "RABBITMQ_URL" => "amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/",
       }
     },
   },
@@ -83,7 +89,10 @@ NODES = {
     clone:    true,
     env: -> {
       {
+        "REGISTRY_NAMESPACE" => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"          => IMAGE_TAG,
         "HISTORY_BASE"   => "http://#{node_ip("history")}:8001",
+        "RABBITMQ_URL"   => "amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/",
         "REDIS_URL"      => "redis://#{node_ip("postgres")}:6379/0",
         "WATCHED_CITIES" => WATCHED_CITIES,
       }
@@ -97,6 +106,8 @@ NODES = {
     clone:    true,
     env: -> {
       {
+        "REGISTRY_NAMESPACE"          => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"                   => IMAGE_TAG,
         "RABBITMQ_URL"                => "amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/",
         "WATCHED_CITIES"              => WATCHED_CITIES,
         "POLL_INTERVAL_SECONDS"       => POLL_INTERVAL_SECONDS.to_s,
@@ -111,7 +122,11 @@ NODES = {
     memory:   "1024",
     clone:    true,
     env: -> {
-      { "BACKEND_HOST" => node_ip("backend") }
+      {
+        "REGISTRY_NAMESPACE" => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"          => IMAGE_TAG,
+        "BACKEND_HOST"       => node_ip("backend"),
+      }
     },
   },
 }
@@ -136,7 +151,7 @@ SHELL
 def env_script(name, env_vars)
   lines = [
     "set -euo pipefail",
-    "ENV_FILE=#{APP_DIR}/provision/#{name}/.env",
+    "ENV_FILE=#{APP_DIR}/infra/#{name}/.env",
     'mkdir -p "$(dirname "$ENV_FILE")"',
     ': > "$ENV_FILE"',
   ]
@@ -180,16 +195,25 @@ Vagrant.configure("2") do |config|
       # from the host instead.
       unless cfg[:clone]
         node.vm.provision "shell", name: "mkdir",
-          inline: "mkdir -p #{APP_DIR}/provision/#{name}"
+          inline: "mkdir -p #{APP_DIR}/infra/#{name}"
         node.vm.provision "file",
-          source: "provision/#{name}/docker-compose.yml",
+          source: "infra/#{name}/docker-compose.yml",
           destination: "/tmp/docker-compose.yml"
         node.vm.provision "shell", name: "place",
-          inline: "mv /tmp/docker-compose.yml #{APP_DIR}/provision/#{name}/docker-compose.yml"
+          inline: "mv /tmp/docker-compose.yml #{APP_DIR}/infra/#{name}/docker-compose.yml"
       end
 
       node.vm.provision "shell", name: "docker",
-        path: "provision/scripts/install-docker.sh"
+        path: "infra/scripts/install-docker.sh"
+
+      # Every *.pub in infra/keys becomes a login on this VM — the filename is
+      # the username. Runs after docker so the accounts can join its group.
+      node.vm.provision "file",
+        source: "infra/keys",
+        destination: "/tmp/keys"
+      node.vm.provision "shell", name: "users",
+        path: "infra/scripts/setup-users.sh",
+        args: ["/tmp/keys"]
 
       node.vm.provision "shell", name: "env",
         inline: env_script(name, cfg[:env].call)
@@ -197,8 +221,8 @@ Vagrant.configure("2") do |config|
       # deploy.sh lives in the repo but is uploaded by Vagrant, so the infra VM
       # (which has no clone) can run it too.
       node.vm.provision "shell", name: "deploy",
-        path: "provision/scripts/deploy.sh",
-        args: ["#{APP_DIR}/provision/#{name}"]
+        path: "infra/scripts/deploy.sh",
+        args: ["#{APP_DIR}/infra/#{name}"]
     end
   end
 end

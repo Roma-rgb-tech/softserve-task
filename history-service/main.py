@@ -1,28 +1,23 @@
 """History service.
 
-Owns persistence. Consumes weather readings from RabbitMQ and appends them to
-Postgres, and exposes read-only endpoints for the backend.
+Owns persistence. Readings arrive from the backend over HTTP and are appended
+to Postgres; reads are served back to the backend.
 
-The store is deliberately append-only: there are no delete or clear endpoints,
-so a monitoring history cannot be rewritten from the outside.
+The store is append-only: there is an insert endpoint but no update or delete,
+so a monitoring record cannot be rewritten once it lands.
 """
 
 import os
 import json
-import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+
 import asyncpg
-import aio_pika
+from fastapi import FastAPI, HTTPException
 
 app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgres://postgres:example@postgres:5432/history_db")
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
-QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
 pool = None
-_rmq_connection = None
-_consumer_task = None
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS requests_history (
@@ -50,10 +45,10 @@ async def _init_connection(conn):
 
 
 def _parse_event_time(raw):
-    """The collection time comes from the fetcher inside the message. It must
-    survive the queue: if the consumer was down for a while, every backlogged
-    message would otherwise be stamped with the moment we drained the queue,
-    and the real collection times would be lost."""
+    """The collection time comes from the fetcher and travels through the
+    queue. It must survive that trip: if the consumer was down for a while,
+    stamping rows with the moment we drained the queue would lose the real
+    collection times."""
     if not raw:
         return None
     try:
@@ -62,10 +57,29 @@ def _parse_event_time(raw):
         return None
 
 
-async def persist_event(payload: dict):
-    """The single write path. Only the RabbitMQ consumer calls this — nothing
-    over HTTP can insert, update or remove a row."""
+@app.on_event("startup")
+async def startup():
     global pool
+    pool = await asyncpg.create_pool(DATABASE_URL, init=_init_connection)
+    async with pool.acquire() as conn:
+        await conn.execute(CREATE_TABLE_SQL)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global pool
+    if pool:
+        await pool.close()
+
+
+@app.post("/history/events")
+async def receive_event(payload: dict):
+    """The single write path. The backend calls this after consuming a reading
+    from RabbitMQ — this service no longer talks to the broker itself."""
+    global pool
+    if not pool:
+        raise HTTPException(status_code=500, detail="DB not initialized")
+
     collected_at = _parse_event_time(payload.get("event_time"))
     async with pool.acquire() as conn:
         await conn.execute(
@@ -78,55 +92,7 @@ async def persist_event(payload: dict):
             payload.get("response_status"),
             payload.get("response_body") or {},
         )
-
-
-async def consume_weather_events():
-    """Background consumer. This is the asynchronous half of the write path:
-    the fetcher publishes to `weather.events` and we pick messages up whenever
-    we're alive, so a restart on either side never loses a reading — RabbitMQ
-    holds the durable message until we come back."""
-    global _rmq_connection
-    while True:
-        try:
-            _rmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
-            async with _rmq_connection:
-                channel = await _rmq_connection.channel()
-                await channel.set_qos(prefetch_count=10)
-                queue = await channel.declare_queue(QUEUE_NAME, durable=True)
-                async with queue.iterator() as it:
-                    async for message in it:
-                        async with message.process():
-                            try:
-                                await persist_event(json.loads(message.body.decode()))
-                            except Exception:
-                                # A malformed message shouldn't take the whole
-                                # consumer down; it's acked and dropped, and
-                                # everything else keeps flowing.
-                                pass
-        except Exception:
-            # Broker not reachable yet (still booting, say) — back off and
-            # retry the connection itself, not each individual message.
-            await asyncio.sleep(5)
-
-
-@app.on_event("startup")
-async def startup():
-    global pool, _consumer_task
-    pool = await asyncpg.create_pool(DATABASE_URL, init=_init_connection)
-    async with pool.acquire() as conn:
-        await conn.execute(CREATE_TABLE_SQL)
-    _consumer_task = asyncio.create_task(consume_weather_events())
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    global pool, _consumer_task
-    if _consumer_task:
-        _consumer_task.cancel()
-    if _rmq_connection:
-        await _rmq_connection.close()
-    if pool:
-        await pool.close()
+    return {"status": "stored"}
 
 
 @app.get("/history/recent")
