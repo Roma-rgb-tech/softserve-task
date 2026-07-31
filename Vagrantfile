@@ -116,7 +116,7 @@ SHELL
 def env_script(name, env_vars)
   lines = [
     "set -euo pipefail",
-    "ENV_FILE=#{APP_DIR}/provision/#{name}/.env",
+    "ENV_FILE=#{APP_DIR}/infra/#{name}/.env",
     'mkdir -p "$(dirname "$ENV_FILE")"',
     ': > "$ENV_FILE"',
   ]
@@ -150,30 +150,30 @@ Vagrant.configure("2") do |config|
         qe.vmnet_interface  = BRIDGE_IFACE
       end
 
-      node.vm.provision "shell", name: "hosts", inline: HOSTS_FILE
-      node.vm.provision "shell", name: "clone", inline: CLONE_REPO if cfg[:clone]
+      node.vm.infra "shell", name: "hosts", inline: HOSTS_FILE
+      node.vm.infra "shell", name: "clone", inline: CLONE_REPO if cfg[:clone]
 
 
       unless cfg[:clone]
-        node.vm.provision "shell", name: "mkdir",
-          inline: "mkdir -p #{APP_DIR}/provision/#{name}"
-        node.vm.provision "file",
-          source: "provision/#{name}/docker-compose.yml",
+        node.vm.infra "shell", name: "mkdir",
+          inline: "mkdir -p #{APP_DIR}/infra/#{name}"
+        node.vm.infra "file",
+          source: "infra/#{name}/docker-compose.yml",
           destination: "/tmp/docker-compose.yml"
-        node.vm.provision "shell", name: "place",
-          inline: "mv /tmp/docker-compose.yml #{APP_DIR}/provision/#{name}/docker-compose.yml"
+        node.vm.infra "shell", name: "place",
+          inline: "mv /tmp/docker-compose.yml #{APP_DIR}/infra/#{name}/docker-compose.yml"
       end
 
-      node.vm.provision "shell", name: "docker",
-        path: "provision/scripts/install-docker.sh"
+      node.vm.infra "shell", name: "docker",
+        path: "infra/scripts/install-docker.sh"
 
-      node.vm.provision "shell", name: "env",
+      node.vm.infra "shell", name: "env",
         inline: env_script(name, cfg[:env].call)
 
         
-      node.vm.provision "shell", name: "deploy",
-        path: "provision/scripts/deploy.sh",
-        args: ["#{APP_DIR}/provision/#{name}"]
+      node.vm.infra "shell", name: "deploy",
+        path: "infra/scripts/deploy.sh",
+        args: ["#{APP_DIR}/infra/#{name}"]
     end
   end
 end
