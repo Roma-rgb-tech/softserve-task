@@ -1,3 +1,9 @@
+# Infrastructure VM: the stateful pieces everything else talks to.
+#
+# Ports are published to the VM's interfaces so the other VMs can reach them
+# over the LAN — these three are the only containers in the project that
+# accept connections from outside their own machine.
+
 services:
   postgres:
     image: postgres:15
@@ -9,7 +15,13 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      # Named volume, so re-provisioning the VM doesn't wipe the history.
       - pgdata:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
@@ -21,6 +33,11 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -36,6 +53,11 @@ services:
     ports:
       - "5672:5672"    # AMQP
       - "15672:15672"  # management UI
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 15s

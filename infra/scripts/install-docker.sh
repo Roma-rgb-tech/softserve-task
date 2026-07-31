@@ -1,4 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Installs Docker Engine and the Compose v2 plugin on a fresh VM.
+#
+# Ubuntu's own docker.io package ships without the compose plugin, and jammy
+# has no docker-compose-v2 package, so we add Docker's own repository instead
+# of stitching together a v1 fallback.
 set -euo pipefail
 
 if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
@@ -25,7 +30,8 @@ apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 systemctl enable --now docker
 
-
+# So `docker ps` works over plain `vagrant ssh` without sudo. Takes effect on
+# the next login, which is fine — provisioning itself runs as root.
 usermod -aG docker vagrant
 
 docker --version

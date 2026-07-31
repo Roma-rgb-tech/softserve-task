@@ -99,8 +99,13 @@ async def consume_weather_events():
                             try:
                                 await persist_event(json.loads(message.body.decode()))
                             except Exception:
+                                # A malformed message shouldn't take the whole
+                                # consumer down; it's acked and dropped, and
+                                # everything else keeps flowing.
                                 pass
         except Exception:
+            # Broker not reachable yet (still booting, say) — back off and
+            # retry the connection itself, not each individual message.
             await asyncio.sleep(5)
 
 

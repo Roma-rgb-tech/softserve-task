@@ -1,3 +1,15 @@
+"""Backend service.
+
+The only service the UI talks to. It does two things:
+
+  * session state — ephemeral UI preferences in Redis, keyed by a cookie
+  * reads — serves stored readings by proxying the History service
+
+It never calls a public weather API. The fetcher owns that, on its own clock,
+so no user action anywhere in the UI can trigger an outbound fetch. It also
+exposes no way to modify or delete history: the store is append-only.
+"""
+
 import os
 import json
 import uuid
@@ -12,13 +24,15 @@ app = FastAPI()
 
 HISTORY_BASE = os.getenv("HISTORY_BASE", "http://history:8001")
 
-
+# Redis: purely ephemeral UI session state (chart period, filters, selected
+# city) — never business data, and never user accounts.
 REDIS_URL = os.getenv("REDIS_URL", "redis://postgres:6379/0")
 SESSION_COOKIE_NAME = "session_id"
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30)))  # 30 days
 redis_client: Optional[aioredis.Redis] = None
 
-
+# The monitored cities, fixed by deployment config. The same list the fetcher
+# uses; the UI renders a card per entry and cannot change it.
 WATCHED_CITIES: List[str] = [
     c.strip() for c in os.getenv("WATCHED_CITIES", "Kyiv,Warsaw,Vilnius").split(",") if c.strip()
 ]

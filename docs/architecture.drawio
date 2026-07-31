@@ -1,0 +1,141 @@
+<mxfile host="app.diagrams.net" modified="2026-07-30T20:00:00.000Z" agent="skyline" version="24.7.5" type="device">
+  <diagram id="skyline-arch" name="Skyline architecture">
+    <mxGraphModel dx="1600" dy="960" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===== titles ===== -->
+        <mxCell id="title" value="Skyline — weather monitoring" style="text;html=1;fontSize=22;fontStyle=1;fontColor=#1F2D3D;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="600" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="5 Vagrant VMs bridged onto the home LAN · one Docker Compose stack per VM · no Swarm" style="text;html=1;fontSize=13;fontColor=#5B6B7F;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="720" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- ===== external API ===== -->
+        <mxCell id="meteo" value="&lt;b&gt;Open-Meteo (public API)&lt;/b&gt;&lt;br&gt;forecast · air-quality · geocoding&lt;br&gt;&lt;font color=&quot;#4FA88B&quot;&gt;outside the LAN — internet&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF6F1;strokeColor=#4FA88B;strokeWidth=2;fontSize=12;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="90" width="300" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LAN boundary ===== -->
+        <mxCell id="lan" value="Home LAN · 192.168.88.0/24 (bridged, static addresses outside the DHCP pool)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B6C6D6;strokeWidth=2;dashed=1;verticalAlign=top;align=left;spacingLeft=16;spacingTop=10;fontSize=13;fontStyle=1;fontColor=#5B6B7F;" vertex="1" parent="1">
+          <mxGeometry x="60" y="220" width="1440" height="720" as="geometry" />
+        </mxCell>
+
+        <!-- ===== client ===== -->
+        <mxCell id="browser" value="&lt;b&gt;Browser&lt;/b&gt;&lt;br&gt;laptop / phone&lt;br&gt;&lt;font color=&quot;#8B9AAD&quot;&gt;any device on the router&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF3F8;strokeColor=#9FB3C8;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="100" y="530" width="150" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- ===== VM ui ===== -->
+        <mxCell id="vmUi" value="&lt;b&gt;VM · ui&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#E0705A&quot; face=&quot;Courier New&quot;&gt;192.168.88.204&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F8FC;strokeColor=#7F9AB5;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="300" y="500" width="220" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="cUi" value="&lt;b&gt;ui-service&lt;/b&gt;&lt;br&gt;nginx + dashboard&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:80&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="320" y="560" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ===== VM backend ===== -->
+        <mxCell id="vmBackend" value="&lt;b&gt;VM · backend&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#E0705A&quot; face=&quot;Courier New&quot;&gt;192.168.88.202&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F8FC;strokeColor=#7F9AB5;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="580" y="500" width="220" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="cBackend" value="&lt;b&gt;backend-service&lt;/b&gt;&lt;br&gt;sessions + reads&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:8000&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="600" y="560" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ===== VM history ===== -->
+        <mxCell id="vmHistory" value="&lt;b&gt;VM · history&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#E0705A&quot; face=&quot;Courier New&quot;&gt;192.168.88.201&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F8FC;strokeColor=#7F9AB5;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="860" y="500" width="220" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="cHistory" value="&lt;b&gt;history-service&lt;/b&gt;&lt;br&gt;AMQP consumer + persistence&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:8001&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="880" y="560" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ===== VM fetcher ===== -->
+        <mxCell id="vmFetcher" value="&lt;b&gt;VM · fetcher&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#E0705A&quot; face=&quot;Courier New&quot;&gt;192.168.88.203&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F8FC;strokeColor=#7F9AB5;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="260" width="300" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="cFetcher" value="&lt;b&gt;fetcher-service&lt;/b&gt;&lt;br&gt;hourly poller — the only service&lt;br&gt;that calls the public API&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:8002 (health only)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="320" width="260" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- ===== VM infra ===== -->
+        <mxCell id="vmInfra" value="&lt;b&gt;VM · postgres (infrastructure)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#E0705A&quot; face=&quot;Courier New&quot;&gt;192.168.88.200&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F8FC;strokeColor=#7F9AB5;strokeWidth=2;verticalAlign=top;spacingTop=8;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="470" width="300" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="cPg" value="&lt;b&gt;postgres:15&lt;/b&gt;&lt;br&gt;requests_history · named volume&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:5432&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="530" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cRedis" value="&lt;b&gt;redis:7&lt;/b&gt;&lt;br&gt;UI session state&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:6379&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="625" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="cRabbit" value="&lt;b&gt;rabbitmq:3&lt;/b&gt;&lt;br&gt;durable queue weather.events&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#8B9AAD&quot;&gt;:5672 · :15672 (UI)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C3D1E0;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="715" width="260" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- ===== edges ===== -->
+        <mxCell id="eBrowserUi" value="HTTP :80&#xa;page" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5B6B7F;strokeWidth=2;fontSize=11;fontColor=#5B6B7F;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="browser" target="vmUi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eUiBackend" value="HTTP :8000&#xa;/api/* proxy — readings, session" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5B6B7F;strokeWidth=2;fontSize=11;fontColor=#5B6B7F;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="vmUi" target="vmBackend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eBackendHistory" value="HTTP :8001&#xa;stored rows (paged)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5B6B7F;strokeWidth=2;fontSize=11;fontColor=#5B6B7F;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="vmBackend" target="vmHistory">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eBackendRedis" value="Redis :6379 — session cookie id → {period, featured city, filter, page size}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5B6B7F;strokeWidth=2;dashed=1;fontSize=11;fontColor=#5B6B7F;endArrow=blockThin;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="vmBackend" target="cRedis">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="690" y="880" />
+              <mxPoint x="1140" y="880" />
+              <mxPoint x="1140" y="663" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="eHistoryPg" value="SQL :5432&#xa;INSERT / SELECT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#5B6B7F;strokeWidth=2;fontSize=11;fontColor=#5B6B7F;endArrow=blockThin;endFill=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="vmHistory" target="cPg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eFetcherMeteo" value="HTTPS — once per hour per city" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4FA88B;strokeWidth=2;fontSize=11;fontColor=#4FA88B;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="vmFetcher" target="meteo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="eFetcherRabbit" value="AMQP publish (persistent)&#xa;city, coords, temp, humidity,&#xa;pressure, wind, air quality, collected_at" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#E0705A;strokeWidth=2;fontSize=11;fontColor=#E0705A;endArrow=blockThin;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cFetcher" target="cRabbit">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1130" y="363" />
+              <mxPoint x="1130" y="758" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="eRabbitHistory" value="AMQP consume" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#E0705A;strokeWidth=2;fontSize=11;fontColor=#E0705A;endArrow=blockThin;endFill=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="cRabbit" target="vmHistory">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="970" y="779" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== notes ===== -->
+        <mxCell id="notes" value="&lt;b&gt;How the flow works&lt;/b&gt;&lt;br&gt;&lt;br&gt;1. Fetcher polls Open-Meteo on its own clock (1 h).&lt;br&gt;2. It publishes each reading to the durable queue.&lt;br&gt;3. History consumes and appends it to Postgres.&lt;br&gt;4. Backend serves stored rows to the UI and keeps&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;display preferences in Redis.&lt;br&gt;&lt;br&gt;&lt;b&gt;No UI action ever triggers an external fetch,&lt;br&gt;and the history has no write or delete endpoint.&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBFDFF;strokeColor=#D6E0EA;align=left;verticalAlign=top;spacingLeft=14;spacingTop=10;fontSize=12;fontColor=#5B6B7F;" vertex="1" parent="1">
+          <mxGeometry x="100" y="690" width="400" height="210" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#5B6B7F&quot;&gt;──── solid grey&lt;/font&gt; · synchronous HTTP / SQL (reads)&lt;br&gt;&lt;font color=&quot;#E0705A&quot;&gt;──── solid orange&lt;/font&gt; · asynchronous AMQP (the write path)&lt;br&gt;&lt;font color=&quot;#4FA88B&quot;&gt;──── solid green&lt;/font&gt; · outbound to the internet&lt;br&gt;&lt;font color=&quot;#5B6B7F&quot;&gt;- - - dashed grey&lt;/font&gt; · session state (not business data)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBFDFF;strokeColor=#D6E0EA;align=left;verticalAlign=top;spacingLeft=14;spacingTop=10;fontSize=12;fontColor=#5B6B7F;" vertex="1" parent="1">
+          <mxGeometry x="540" y="690" width="440" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="footer" value="Each VM runs its own docker-compose stack from provision/&amp;lt;vm&amp;gt;/ — no Swarm, no cluster-wide orchestration. Containers publish ports; cross-VM traffic goes over the LAN by IP." style="text;html=1;fontSize=11;fontColor=#8B9AAD;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="950" width="1200" height="24" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -10,6 +10,10 @@ phone or another laptop on the same router.
 
 ## Architecture
 
+![Architecture](docs/architecture.svg)
+
+The same flow in text:
+
 ```
                                      Open-Meteo (weather · air quality)
                                             ▲
@@ -105,7 +109,7 @@ fetcher-service/    the only service that calls the public weather API
 history-service/    RabbitMQ consumer + persistence
 ui-service/         nginx + dashboard
 
-provision/
+infra/
   scripts/
     install-docker.sh   Docker Engine + Compose v2, run on every VM
     deploy.sh           writes nothing, just brings one stack up
@@ -119,10 +123,31 @@ provision/
 Each VM owns exactly one compose file and brings up only its own containers —
 there is no cluster-wide orchestration, and no Swarm. The `Vagrantfile` holds
 no deployment logic: it computes LAN addresses, writes each service's `.env`
-next to its compose file, and calls the scripts under `provision/`.
+next to its compose file, and calls the scripts under `infra/`.
 
 Containers publish their ports (`ports:`) rather than sharing the VM's network
 namespace, so each service's surface is explicit in its compose file.
+
+## Publishing images
+
+Service images are built once on your machine and pushed to a registry; the VMs
+only pull them. That keeps provisioning fast — nothing compiles five times over
+— and means every VM runs a byte-identical image.
+
+```bash
+docker login
+./infra/scripts/publish-images.sh          # tags as :latest
+./infra/scripts/publish-images.sh v1.2.0   # or a specific version
+```
+
+Then provision. `IMAGE_TAG` selects which published tag the VMs pull:
+
+```bash
+sudo -E vagrant provision                        # :latest
+IMAGE_TAG=v1.2.0 sudo -E vagrant provision       # a pinned version
+```
+
+Override the namespace with `REGISTRY_NAMESPACE` if you publish elsewhere.
 
 ## Running with Vagrant
 
@@ -219,8 +244,8 @@ Each stack can be rebuilt on its own VM without touching the others:
 
 ```bash
 sudo -E vagrant provision backend        # re-clone, rebuild, restart
-sudo -E vagrant ssh backend -- 'cd /opt/app/provision/backend && docker compose ps'
-sudo -E vagrant ssh backend -- 'cd /opt/app/provision/backend && docker compose logs -f'
+sudo -E vagrant ssh backend -- 'cd /opt/app/infra/backend && docker compose ps'
+sudo -E vagrant ssh backend -- 'cd /opt/app/infra/backend && docker compose logs -f'
 ```
 
 The provisioner clones this repo from GitHub (`REPO_BRANCH`), not from your
@@ -303,7 +328,7 @@ curl -s "http://<prefix>.52:8000/history/recent?limit=1"   # Poltava is there
 | `BACKEND_HOST` | ui | `backend` | Rendered into `nginx.conf` at container start via `envsubst` |
 
 All of these are written by the Vagrant provisioner into
-`provision/<service>/.env`, which Compose reads automatically. The compose
+`infra/<service>/.env`, which Compose reads automatically. The compose
 files themselves contain no addresses or credentials.
 
 ## Database inspection
