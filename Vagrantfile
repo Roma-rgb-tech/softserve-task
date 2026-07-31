@@ -1,44 +1,71 @@
 # ---------------------------------------------------------------------------
-# Everything about the machines lives in one dictionary. Adding a fifth VM
-# means adding one entry here — no new config block, no copy-paste.
+# Every machine is generated from the NODES dictionary below. Adding a VM
+# means adding one entry plus a provision/<name>/docker-compose.yml — no new
+# config block, no copy-paste.
+#
+# This file deliberately contains no deployment logic: it computes addresses,
+# writes each VM's .env, and hands off to the scripts under provision/.
 # ---------------------------------------------------------------------------
 
-# Your home network. Change these two to match your router, then every VM
-# gets a real address on your LAN and is reachable from your phone/laptop.
-#   BRIDGE_IFACE: run `ifconfig` (macOS) or `ip a` and use the active adapter
-#                 that carries your Wi-Fi/Ethernet traffic, e.g. "en0".
-#   LAN_PREFIX:   the first three octets of your home subnet.
+# Your home network. Change these two to match your router, then every VM gets
+# a real address on your LAN and is reachable from a phone on the same Wi-Fi.
+#   BRIDGE_IFACE: run `route get default | grep interface`, e.g. "en0"
+#   LAN_PREFIX:   the FIRST THREE octets of your home subnet only
 BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
 LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
-REPO_BRANCH = "dev/redis"
+REPO_BRANCH = "roman-chernyshev/weather"
 
+APP_DIR = "/opt/app"
+
+POSTGRES_USER = "postgres"
+POSTGRES_PASS = "example"
+POSTGRES_DB   = "history_db"
 RABBITMQ_USER = "app"
 RABBITMQ_PASS = "example"
 
-# host octet -> IP, so service URLs below stay readable
+# Images are built once on the host and pushed to the registry; the VMs only
+# pull them. Publish with infra/scripts/publish-images.sh before provisioning.
+REGISTRY_NAMESPACE = ENV.fetch("REGISTRY_NAMESPACE", "tripletsrc")
+IMAGE_TAG          = ENV.fetch("IMAGE_TAG", "latest")
+
+# The cities this deployment monitors. The fetcher collects them; the backend
+# tells the UI which cards to render. Nothing at runtime can change the list.
+WATCHED_CITIES = "Kyiv,Warsaw,Vilnius"
+
+# One reading per city per hour. MIN_RECORD_INTERVAL keeps a restart from
+# writing a second row for a city it already recorded this cycle.
+POLL_INTERVAL_SECONDS       = 3600
+MIN_RECORD_INTERVAL_SECONDS = 3000
+
 def lan(octet)
   "#{LAN_PREFIX}.#{octet}"
 end
 
+# Addresses are derived from NODES, so moving a VM to a different octet updates
+# every service URL that points at it. Safe to call from inside the env lambdas:
+# they are only evaluated at provision time, long after NODES is built.
+def node_ip(name)
+  lan(NODES[name][:octet])
+end
+
 NODES = {
+  # Infrastructure: three off-the-shelf images, nothing built from our repo.
   "postgres" => {
     octet:    200,
     ssh_port: 2222,
     memory:   "1536",
-    # Infra VM: three off-the-shelf images, nothing built from our repo.
     clone:    false,
-    run: ->(ip) { <<~SHELL }
-      docker rm -f postgres 2>/dev/null || true
-      docker run -d --name postgres --restart unless-stopped --network host -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=example -e POSTGRES_DB=history_db -v pgdata:/var/lib/postgresql/data postgres:15
-
-      docker rm -f redis 2>/dev/null || true
-      docker run -d --name redis --restart unless-stopped --network host redis:7-alpine
-
-      docker rm -f rabbitmq 2>/dev/null || true
-      docker run -d --name rabbitmq --restart unless-stopped --network host -e RABBITMQ_DEFAULT_USER=#{RABBITMQ_USER} -e RABBITMQ_DEFAULT_PASS=#{RABBITMQ_PASS} rabbitmq:3-management
-    SHELL
+    env: -> {
+      {
+        "POSTGRES_USER"     => POSTGRES_USER,
+        "POSTGRES_PASSWORD" => POSTGRES_PASS,
+        "POSTGRES_DB"       => POSTGRES_DB,
+        "RABBITMQ_USER"     => RABBITMQ_USER,
+        "RABBITMQ_PASS"     => RABBITMQ_PASS,
+      }
+    },
   },
 
   "history" => {
@@ -46,12 +73,14 @@ NODES = {
     ssh_port: 2223,
     memory:   "1536",
     clone:    true,
-    service:  "history-service",
-    run: ->(ip) { <<~SHELL }
-      docker build -t history-service /opt/app/history-service
-      docker rm -f history 2>/dev/null || true
-      docker run -d --name history --restart unless-stopped --network host -e DATABASE_URL=postgresql://postgres:example@#{node_ip("postgres")}:5432/history_db -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/ history-service
-    SHELL
+    env: -> {
+      {
+        "REGISTRY_NAMESPACE" => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"          => IMAGE_TAG,
+        "DATABASE_URL" => "postgresql://#{POSTGRES_USER}:#{POSTGRES_PASS}@#{node_ip("postgres")}:5432/#{POSTGRES_DB}",
+        "RABBITMQ_URL" => "amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/",
+      }
+    },
   },
 
   "backend" => {
@@ -59,12 +88,15 @@ NODES = {
     ssh_port: 2224,
     memory:   "1536",
     clone:    true,
-    service:  "backend-service",
-    run: ->(ip) { <<~SHELL }
-      docker build -t backend-service /opt/app/backend-service
-      docker rm -f backend 2>/dev/null || true
-      docker run -d --name backend --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e REDIS_URL=redis://#{node_ip("postgres")}:6379/0 -e WATCHED_CITIES=Kyiv,Lviv backend-service
-    SHELL
+    env: -> {
+      {
+        "REGISTRY_NAMESPACE" => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"          => IMAGE_TAG,
+        "HISTORY_BASE"   => "http://#{node_ip("history")}:8001",
+        "REDIS_URL"      => "redis://#{node_ip("postgres")}:6379/0",
+        "WATCHED_CITIES" => WATCHED_CITIES,
+      }
+    },
   },
 
   "fetcher" => {
@@ -72,12 +104,16 @@ NODES = {
     ssh_port: 2226,
     memory:   "1024",
     clone:    true,
-    service:  "fetcher-service",
-    run: ->(ip) { <<~SHELL }
-      docker build -t fetcher-service /opt/app/fetcher-service
-      docker rm -f fetcher 2>/dev/null || true
-      docker run -d --name fetcher --restart unless-stopped --network host -e HISTORY_BASE=http://#{node_ip("history")}:8001 -e RABBITMQ_URL=amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/ -e POLL_INTERVAL_SECONDS=1800 -e MIN_RECORD_INTERVAL_SECONDS=600 fetcher-service
-    SHELL
+    env: -> {
+      {
+        "REGISTRY_NAMESPACE"          => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"                   => IMAGE_TAG,
+        "RABBITMQ_URL"                => "amqp://#{RABBITMQ_USER}:#{RABBITMQ_PASS}@#{node_ip("postgres")}/",
+        "WATCHED_CITIES"              => WATCHED_CITIES,
+        "POLL_INTERVAL_SECONDS"       => POLL_INTERVAL_SECONDS.to_s,
+        "MIN_RECORD_INTERVAL_SECONDS" => MIN_RECORD_INTERVAL_SECONDS.to_s,
+      }
+    },
   },
 
   "ui" => {
@@ -85,41 +121,47 @@ NODES = {
     ssh_port: 2225,
     memory:   "1024",
     clone:    true,
-    service:  "ui-service",
-    run: ->(ip) { <<~SHELL }
-      docker build -t ui-service /opt/app/ui-service
-      docker rm -f ui 2>/dev/null || true
-      docker run -d --name ui --restart unless-stopped --network host -e BACKEND_HOST=#{node_ip("backend")} ui-service
-    SHELL
+    env: -> {
+      {
+        "REGISTRY_NAMESPACE" => REGISTRY_NAMESPACE,
+        "IMAGE_TAG"          => IMAGE_TAG,
+        "BACKEND_HOST"       => node_ip("backend"),
+      }
+    },
   },
 }
 
-def node_ip(name)
-  lan(NODES[name][:octet])
-end
-
-# /etc/hosts entries so the VMs can also address each other by name
+# /etc/hosts entries, so the VMs can also address each other by name
 HOSTS_FILE = NODES.map { |name, c|
   "grep -q ' #{name}$' /etc/hosts || echo '#{lan(c[:octet])} #{name}' >> /etc/hosts"
 }.join("\n")
 
-INSTALL_DOCKER = <<~SHELL
-  set -e
-  if ! command -v docker >/dev/null; then
-    apt-get update -y
-    apt-get install -y docker.io
-    systemctl enable --now docker
-  fi
-  usermod -aG docker vagrant
-SHELL
-
 CLONE_REPO = <<~SHELL
-  set -e
+  set -euo pipefail
+  export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
   apt-get install -y git
-  rm -rf /opt/app
-  git clone --depth 1 --branch #{REPO_BRANCH} #{REPO_URL} /opt/app
+  rm -rf #{APP_DIR}
+  git clone --depth 1 --branch #{REPO_BRANCH} #{REPO_URL} #{APP_DIR}
 SHELL
+
+# Writes the service's .env next to its compose file. Built as a plain string
+# rather than a nested heredoc: Ruby's squiggly-heredoc dedent and a shell
+# heredoc inside it interact badly, and a mangled .env is hard to spot.
+def env_script(name, env_vars)
+  lines = [
+    "set -euo pipefail",
+    "ENV_FILE=#{APP_DIR}/infra/#{name}/.env",
+    'mkdir -p "$(dirname "$ENV_FILE")"',
+    ': > "$ENV_FILE"',
+  ]
+  env_vars.each do |k, val|
+    lines << %Q{printf '%s\\n' '#{k}=#{val}' >> "$ENV_FILE"}
+  end
+  lines << 'echo "wrote $ENV_FILE:"'
+  lines << 'cat "$ENV_FILE"'
+  lines.join("\n")
+end
 
 Vagrant.configure("2") do |config|
   config.vm.box = "perk/ubuntu-2204-arm64"
@@ -146,10 +188,32 @@ Vagrant.configure("2") do |config|
         qe.vmnet_interface  = BRIDGE_IFACE
       end
 
-      node.vm.provision "shell", inline: HOSTS_FILE
-      node.vm.provision "shell", inline: INSTALL_DOCKER
-      node.vm.provision "shell", inline: CLONE_REPO if cfg[:clone]
-      node.vm.provision "shell", inline: "set -e\n" + cfg[:run].call(ip)
+      node.vm.provision "shell", name: "hosts", inline: HOSTS_FILE
+      node.vm.provision "shell", name: "clone", inline: CLONE_REPO if cfg[:clone]
+
+      # The infra VM never clones the repo, so its compose file is uploaded
+      # from the host instead.
+      unless cfg[:clone]
+        node.vm.provision "shell", name: "mkdir",
+          inline: "mkdir -p #{APP_DIR}/infra/#{name}"
+        node.vm.provision "file",
+          source: "infra/#{name}/docker-compose.yml",
+          destination: "/tmp/docker-compose.yml"
+        node.vm.provision "shell", name: "place",
+          inline: "mv /tmp/docker-compose.yml #{APP_DIR}/infra/#{name}/docker-compose.yml"
+      end
+
+      node.vm.provision "shell", name: "docker",
+        path: "infra/scripts/install-docker.sh"
+
+      node.vm.provision "shell", name: "env",
+        inline: env_script(name, cfg[:env].call)
+
+      # deploy.sh lives in the repo but is uploaded by Vagrant, so the infra VM
+      # (which has no clone) can run it too.
+      node.vm.provision "shell", name: "deploy",
+        path: "infra/scripts/deploy.sh",
+        args: ["#{APP_DIR}/infra/#{name}"]
     end
   end
 end

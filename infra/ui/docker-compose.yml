@@ -1,0 +1,23 @@
+# UI VM: nginx serving the dashboard and proxying /api/* to the backend.
+#
+# BACKEND_HOST is rendered into nginx.conf at container start, so the same
+# published image works against any backend address.
+
+services:
+  ui:
+    image: ${REGISTRY_NAMESPACE}/ui-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      BACKEND_HOST: ${BACKEND_HOST}
+    ports:
+      - "80:80"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
