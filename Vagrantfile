@@ -150,28 +150,28 @@ Vagrant.configure("2") do |config|
         qe.vmnet_interface  = BRIDGE_IFACE
       end
 
-      node.vm.infra "shell", name: "hosts", inline: HOSTS_FILE
-      node.vm.infra "shell", name: "clone", inline: CLONE_REPO if cfg[:clone]
+      node.vm.provision "shell", name: "hosts", inline: HOSTS_FILE
+      node.vm.provision "shell", name: "clone", inline: CLONE_REPO if cfg[:clone]
 
 
       unless cfg[:clone]
-        node.vm.infra "shell", name: "mkdir",
+        node.vm.provision "shell", name: "mkdir",
           inline: "mkdir -p #{APP_DIR}/infra/#{name}"
-        node.vm.infra "file",
+        node.vm.provision "file",
           source: "infra/#{name}/docker-compose.yml",
           destination: "/tmp/docker-compose.yml"
-        node.vm.infra "shell", name: "place",
+        node.vm.provision "shell", name: "place",
           inline: "mv /tmp/docker-compose.yml #{APP_DIR}/infra/#{name}/docker-compose.yml"
       end
 
-      node.vm.infra "shell", name: "docker",
+      node.vm.provision "shell", name: "docker",
         path: "infra/scripts/install-docker.sh"
 
-      node.vm.infra "shell", name: "env",
+      node.vm.provision "shell", name: "env",
         inline: env_script(name, cfg[:env].call)
 
         
-      node.vm.infra "shell", name: "deploy",
+      node.vm.provision "shell", name: "deploy",
         path: "infra/scripts/deploy.sh",
         args: ["#{APP_DIR}/infra/#{name}"]
     end
