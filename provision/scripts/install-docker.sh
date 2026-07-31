@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then

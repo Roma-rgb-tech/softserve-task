@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 SERVICE_DIR="${1:?usage: deploy.sh <service-dir>}"
@@ -9,8 +9,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# Containers from the earlier `docker run` layout hold the same published
-# ports and would block the stack from starting. Harmless once they're gone.
+
 for legacy in postgres redis rabbitmq history backend fetcher ui; do
   docker rm -f "$legacy" 2>/dev/null || true
 done
