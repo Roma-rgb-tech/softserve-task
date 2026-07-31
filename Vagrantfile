@@ -15,7 +15,7 @@ BRIDGE_IFACE = ENV.fetch("VAGRANT_BRIDGE", "en0")
 LAN_PREFIX   = ENV.fetch("LAN_PREFIX", "192.168.88")
 
 REPO_URL    = "https://github.com/Roma-rgb-tech/softserve-task.git"
-REPO_BRANCH = "roman-chernyshev/fix-compose"
+REPO_BRANCH = "roman-chernyshev/weather"
 
 APP_DIR = "/opt/app"
 
