@@ -26,3 +26,7 @@ docker-compose.override.yml
 
 # Vagrant
 .vagrant/
+# Public keys in infra/keys are meant to be committed; private ones never are.
+infra/keys/*
+!infra/keys/*.pub
+!infra/keys/README.md
