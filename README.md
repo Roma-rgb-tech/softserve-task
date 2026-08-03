@@ -12,20 +12,6 @@ phone or another laptop on the same router.
 
 ![Architecture](docs/architecture.svg)
 
-The same flow in text:
-
-```
-                                     Open-Meteo (weather · air quality)
-                                            ▲
-                                            │ only the fetcher calls it
-                                            │
-Browser ──▶ UI (nginx) ──▶ Backend ──▶ Redis│   Fetcher ──(AMQP)──▶ RabbitMQ
-                              │             │      │                   │
-                              │             └──────┘                   ▼
-                              └──── HTTP reads ────────────────▶  History ──▶ PostgreSQL
-                                                                      ▲
-                                            Fetcher reads the watch list ┘
-```
 
 | Service | Port | Role |
 |---|---|---|
