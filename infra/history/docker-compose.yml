@@ -1,9 +1,3 @@
-# History VM: owns persistence. Consumes weather readings from RabbitMQ and
-# appends them to Postgres, and serves read-only queries to the backend.
-#
-# The RabbitMQ consumer runs inside this service's own process — a piece of
-# code, not a separate container.
-
 services:
   history:
     image: ${REGISTRY_NAMESPACE}/history-service:${IMAGE_TAG:-latest}

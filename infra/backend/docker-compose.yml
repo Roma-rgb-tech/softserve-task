@@ -1,9 +1,3 @@
-# Backend VM: the only service the UI talks to.
-#
-# The image is built once and published to the registry (see
-# infra/scripts/publish-images.sh) — the VM only pulls it, so provisioning
-# doesn't spend time compiling dependencies on every run.
-
 services:
   backend:
     image: ${REGISTRY_NAMESPACE}/backend-service:${IMAGE_TAG:-latest}
