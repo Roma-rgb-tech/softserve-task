@@ -1,17 +1,23 @@
+"""History service.
+
+Owns persistence. Readings arrive from the backend over HTTP and are appended
+to Postgres; reads are served back to the backend.
+
+The store is append-only: there is an insert endpoint but no update or delete,
+so a monitoring record cannot be rewritten once it lands.
+"""
+
 import os
 import json
-import asyncio
-from fastapi import FastAPI, HTTPException
+from datetime import datetime
+from typing import Optional
+
 import asyncpg
-import aio_pika
+from fastapi import FastAPI, HTTPException
 
 app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgres://postgres:example@postgres:5432/history_db")
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://app:example@postgres/")
-QUEUE_NAME = os.getenv("WEATHER_EVENTS_QUEUE", "weather.events")
 pool = None
-_rmq_connection = None
-_consumer_task = None
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS requests_history (
@@ -22,13 +28,6 @@ CREATE TABLE IF NOT EXISTS requests_history (
   query_params JSONB,
   response_status INT,
   response_body JSONB
-);
-
-CREATE TABLE IF NOT EXISTS watched_cities (
-  name TEXT PRIMARY KEY,
-  latitude DOUBLE PRECISION NOT NULL,
-  longitude DOUBLE PRECISION NOT NULL,
-  added_at TIMESTAMPTZ DEFAULT now()
 );
 """
 
@@ -45,95 +44,82 @@ async def _init_connection(conn):
     )
 
 
-async def persist_event(payload: dict):
-    """Single write path used by both the RabbitMQ consumer and the legacy
-    HTTP endpoint, so an event is stored identically either way."""
-    global pool
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO requests_history(event_time, path, client_ip, query_params, response_status, response_body) VALUES (now(), $1, $2, $3::jsonb, $4, $5::jsonb)",
-            payload.get("path"),
-            payload.get("client_ip"),
-            payload.get("query_params") or {},
-            payload.get("response_status"),
-            payload.get("response_body") or {}
-        )
-
-
-async def consume_weather_events():
-    """Background consumer: this is the async replacement for the old
-    Backend -> History HTTP call. Backend now publishes to `weather.events`
-    instead of calling us directly; we pick messages up whenever we're
-    alive, so a restart on either side never loses an event — RabbitMQ
-    just holds the durable message until we come back."""
-    global _rmq_connection
-    while True:
-        try:
-            _rmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
-            async with _rmq_connection:
-                channel = await _rmq_connection.channel()
-                await channel.set_qos(prefetch_count=10)
-                queue = await channel.declare_queue(QUEUE_NAME, durable=True)
-                async with queue.iterator() as it:
-                    async for message in it:
-                        async with message.process():
-                            try:
-                                payload = json.loads(message.body.decode())
-                                await persist_event(payload)
-                            except Exception:
-                                # A malformed message shouldn't take the whole
-                                # consumer down; it's acked (via message.process())
-                                # and dropped, everything else keeps flowing.
-                                pass
-        except Exception:
-            # Broker not reachable yet (e.g. still booting) — back off and
-            # retry the connection itself, not each individual message.
-            await asyncio.sleep(5)
+def _parse_event_time(raw):
+    """The collection time comes from the fetcher and travels through the
+    queue. It must survive that trip: if the consumer was down for a while,
+    stamping rows with the moment we drained the queue would lose the real
+    collection times."""
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
 
 
 @app.on_event("startup")
 async def startup():
-    global pool, _consumer_task
+    global pool
     pool = await asyncpg.create_pool(DATABASE_URL, init=_init_connection)
     async with pool.acquire() as conn:
         await conn.execute(CREATE_TABLE_SQL)
-    _consumer_task = asyncio.create_task(consume_weather_events())
+
 
 @app.on_event("shutdown")
 async def shutdown():
-    global pool, _consumer_task
-    if _consumer_task:
-        _consumer_task.cancel()
-    if _rmq_connection:
-        await _rmq_connection.close()
+    global pool
     if pool:
         await pool.close()
 
+
 @app.post("/history/events")
 async def receive_event(payload: dict):
-    """Legacy direct-write endpoint. No longer called by Backend (it now
-    publishes to RabbitMQ instead) — kept only for manual testing/debugging
-    so you can POST a synthetic event without a broker running."""
+    """The single write path. The backend calls this after consuming a reading
+    from RabbitMQ — this service no longer talks to the broker itself."""
     global pool
     if not pool:
         raise HTTPException(status_code=500, detail="DB not initialized")
-    await persist_event(payload)
-    return {"status": "ok"}
+
+    collected_at = _parse_event_time(payload.get("event_time"))
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO requests_history(event_time, path, client_ip, query_params, response_status, response_body) "
+            "VALUES (COALESCE($1, now()), $2, $3, $4::jsonb, $5, $6::jsonb)",
+            collected_at,
+            payload.get("path"),
+            payload.get("client_ip"),
+            payload.get("query_params") or {},
+            payload.get("response_status"),
+            payload.get("response_body") or {},
+        )
+    return {"status": "stored"}
 
 
 @app.get("/history/recent")
-async def recent(limit: int = 20, offset: int = 0):
-    """Return recent history rows (most recent first), paged via limit/offset."""
+async def recent(limit: int = 20, offset: int = 0, city: Optional[str] = None):
+    """Stored readings, most recent first, paged via limit/offset.
+
+    Filtering by city happens in SQL rather than in the caller, so `limit`
+    and `offset` count filtered rows — otherwise paging and the row counter
+    would disagree with each other."""
     global pool
     if not pool:
         raise HTTPException(status_code=500, detail="DB not initialized")
     rows = []
     async with pool.acquire() as conn:
-        recs = await conn.fetch(
-            "SELECT id, event_time, path, client_ip, query_params, response_status, response_body FROM requests_history ORDER BY id DESC LIMIT $1 OFFSET $2",
-            limit,
-            offset,
-        )
+        if city:
+            recs = await conn.fetch(
+                "SELECT id, event_time, path, client_ip, query_params, response_status, response_body "
+                "FROM requests_history WHERE query_params->>'city' = $3 "
+                "ORDER BY id DESC LIMIT $1 OFFSET $2",
+                limit, offset, city,
+            )
+        else:
+            recs = await conn.fetch(
+                "SELECT id, event_time, path, client_ip, query_params, response_status, response_body "
+                "FROM requests_history ORDER BY id DESC LIMIT $1 OFFSET $2",
+                limit, offset,
+            )
         for r in recs:
             rows.append({
                 "id": r["id"],
@@ -148,82 +134,18 @@ async def recent(limit: int = 20, offset: int = 0):
 
 
 @app.get("/history/count")
-async def count():
-    """Total number of history rows, used by the UI to know when to stop paging."""
+async def count(city: Optional[str] = None):
+    """Number of stored readings, optionally for one city. Takes the same
+    filter as /history/recent so the UI's "showing N of M" always matches
+    what the table is actually displaying."""
     global pool
     if not pool:
         raise HTTPException(status_code=500, detail="DB not initialized")
     async with pool.acquire() as conn:
-        total = await conn.fetchval("SELECT COUNT(*) FROM requests_history")
+        if city:
+            total = await conn.fetchval(
+                "SELECT COUNT(*) FROM requests_history WHERE query_params->>'city' = $1", city
+            )
+        else:
+            total = await conn.fetchval("SELECT COUNT(*) FROM requests_history")
     return {"total": total}
-
-
-# --- watched cities -------------------------------------------------------
-# The watch list lives here rather than in memory anywhere else: the backend
-# writes to it when a user adds a city, and the fetcher reads it on every
-# poll cycle. Persisting it means a restart of either service doesn't lose
-# the cities someone asked to track.
-
-@app.get("/cities")
-async def list_watched():
-    global pool
-    if not pool:
-        raise HTTPException(status_code=500, detail="DB not initialized")
-    async with pool.acquire() as conn:
-        recs = await conn.fetch(
-            "SELECT name, latitude, longitude FROM watched_cities ORDER BY added_at"
-        )
-    return [{"name": r["name"], "latitude": r["latitude"], "longitude": r["longitude"]}
-            for r in recs]
-
-
-@app.post("/cities")
-async def add_watched(payload: dict):
-    """Idempotent: re-adding a city just refreshes its coordinates."""
-    global pool
-    if not pool:
-        raise HTTPException(status_code=500, detail="DB not initialized")
-    name = payload.get("name")
-    lat = payload.get("latitude")
-    lon = payload.get("longitude")
-    if not name or lat is None or lon is None:
-        raise HTTPException(status_code=400, detail="name, latitude and longitude are required")
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """INSERT INTO watched_cities(name, latitude, longitude) VALUES ($1, $2, $3)
-               ON CONFLICT (name) DO UPDATE SET latitude = $2, longitude = $3""",
-            name, float(lat), float(lon),
-        )
-    return {"status": "watching", "name": name}
-
-
-@app.delete("/cities/{name}")
-async def remove_watched(name: str):
-    global pool
-    if not pool:
-        raise HTTPException(status_code=500, detail="DB not initialized")
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM watched_cities WHERE name = $1", name)
-    return {"status": "removed", "name": name}
-
-
-@app.delete("/history/clear")
-async def clear_history():
-    """Delete all history rows."""
-    global pool
-    if not pool:
-        raise HTTPException(status_code=500, detail="DB not initialized")
-    async with pool.acquire() as conn:
-        await conn.execute("TRUNCATE requests_history RESTART IDENTITY")
-    return {"status": "cleared"}
-
-
-@app.delete("/history/{item_id}")
-async def delete_item(item_id: int):
-    """Delete single history row by id."""
-    global pool
-    if not pool:
-        raise HTTPException(status_code=500, detail="DB not initialized")
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM requests_history WHERE id = $1", item_id)
-    return {"status": "deleted", "id": item_id}
