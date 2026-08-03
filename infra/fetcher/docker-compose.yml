@@ -1,9 +1,3 @@
-# Fetcher VM: the only component that talks to the public weather API.
-#
-# It polls on its own clock — nothing in the UI or the backend can make it
-# fetch — and publishes every reading to RabbitMQ. The port is published only
-# so /health can be inspected.
-
 services:
   fetcher:
     image: ${REGISTRY_NAMESPACE}/fetcher-service:${IMAGE_TAG:-latest}
