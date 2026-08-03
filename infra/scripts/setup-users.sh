@@ -1,12 +1,4 @@
 #!/bin/bash
-# Creates one login per public key found in the uploaded keys directory.
-#
-# The filename is the username: infra/keys/roman.pub becomes the user `roman`
-# with that key in ~/.ssh/authorized_keys. A file may hold several keys, one
-# per line, if the same person logs in from more than one machine.
-#
-# Everything here is idempotent — re-running only adds what's missing, so a
-# repeated `vagrant provision` never duplicates users or key lines.
 set -euo pipefail
 
 KEYS_DIR="${1:-/tmp/keys}"
