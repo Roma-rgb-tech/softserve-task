@@ -25,5 +25,6 @@ env/
 docker-compose.override.yml
 
 # Vagrant
-.vagrant/*.zip
+.vagrant/
+*.zip
 .vagrant/
