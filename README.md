@@ -21,6 +21,30 @@ have already been persisted in PostgreSQL.
 - Four-machine Vagrant deployment using QEMU and static bridged LAN addresses.
 - Passwordless project-specific SSH access and journald-based container logging.
 
+## Screenshots
+
+### Application overview
+
+![Oil Price Tracker application overview](assets/screenshots/application-overview.png)
+
+### Latest market snapshot
+
+![Latest persisted WTI, Brent, and RBOB values](assets/screenshots/market-snapshot.png)
+
+### Interactive market analysis
+
+![Interactive chart controls and RBOB price history](assets/screenshots/market-analysis.png)
+
+### Individual benchmark charts
+
+| WTI Crude Oil | Brent Crude Oil |
+|---|---|
+| ![WTI Crude Oil price chart](assets/screenshots/wti-price-chart.png) | ![Brent Crude Oil price chart](assets/screenshots/brent-price-chart.png) |
+
+### Persisted observation ledger
+
+![PostgreSQL-backed market observation ledger](assets/screenshots/observation-ledger.png)
+
 ## Technology stack
 
 | Area | Technology |
@@ -88,6 +112,8 @@ scientific data source.
 
 ```text
 .
+├── assets/
+│   └── screenshots/                Application screenshots
 ├── database/
 │   └── migrations/                 PostgreSQL migrations
 ├── infrastructure/
