@@ -21,8 +21,6 @@ services:
       TZ: UTC
     ports:
       - "${UI_LAN_IP}:8080:8080"
-
-
     healthcheck:
       test:
         - CMD
@@ -40,4 +38,3 @@ services:
       driver: journald
       options:
         tag: petroscope/ui
-

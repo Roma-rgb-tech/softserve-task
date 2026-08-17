@@ -4,14 +4,14 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
-    String,
     DateTime,
+    String,
 )
-
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
+
 
 class SessionRecord(Base):
     __tablename__ = "sessions"
