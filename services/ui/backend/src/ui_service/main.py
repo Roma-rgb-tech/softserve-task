@@ -3,24 +3,22 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
-
-from .sessions import SessionPreferences, resolve_session_id
-
-from datetime import datetime, timedelta, timezone
-from typing import Annotated
-from sqlalchemy.orm import Session
-from fastapi import Depends
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from .database import get_db
-from .repository import get_session, create_session, refresh_session
+from .repository import create_session, get_session, refresh_session
+from .sessions import SessionPreferences, resolve_session_id
+
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -83,7 +81,7 @@ async def health(request: Request, db: Session = Depends(get_db)) -> dict[str, s
 
 
 def _new_expiry() -> datetime:
-    return datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)
+    return datetime.now(UTC) + timedelta(seconds=SESSION_TTL_SECONDS)
 
 
 def _set_session_cookie(response: Response, session_id: str) -> None:
@@ -96,6 +94,7 @@ def _set_session_cookie(response: Response, session_id: str) -> None:
         samesite="lax",
         path="/",
     )
+
 
 @app.get(
     "/api/session/preferences",
@@ -124,6 +123,7 @@ async def get_session_preferences(
             refresh_session(db, session_id, _new_expiry())
     _set_session_cookie(response, session_id)
     return preferences
+
 
 @app.put(
     "/api/session/preferences",
