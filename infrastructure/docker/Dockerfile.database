@@ -1,0 +1,12 @@
+ARG POSTGRES_IMAGE=postgres:18.4-bookworm
+FROM ${POSTGRES_IMAGE}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-18-cron \
+    && rm -rf /var/lib/apt/lists/*
+
+USER postgres
+
+HEALTHCHECK --interval=5s --timeout=5s --start-period=15s --retries=20 \
+    CMD pg_isready --username="${POSTGRES_USER:-postgres}" \
+        --dbname="${POSTGRES_DB:-postgres}" || exit 1
