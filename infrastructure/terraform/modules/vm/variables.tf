@@ -121,3 +121,13 @@ variable "labels" {
   description = "Labels applied to resources that support them."
   type        = map(string)
 }
+
+variable "ssh_users" {
+  description = "Public SSH keys keyed by Linux username."
+  type        = map(string)
+}
+
+variable "ssh_port" {
+  description = "Initial SSH daemon port."
+  type        = number
+}
