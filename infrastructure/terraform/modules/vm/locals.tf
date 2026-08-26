@@ -4,5 +4,7 @@ locals {
     registry_repository = var.registry_repository
     image_sha           = var.image_sha
     docker_version      = var.docker_version
+    run_script          = file("${path.module}/templates/run.sh")
+    compose_deployment  = file("${path.module}/../../../docker/compose.deployment.yaml")
   })
 }
