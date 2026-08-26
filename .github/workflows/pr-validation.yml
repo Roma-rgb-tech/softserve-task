@@ -262,7 +262,8 @@ jobs:
         run: |
           status=0
 
-          for file in compose.*.yaml; do
+          for file in compose.*.yaml \
+            ../ansible/oilscope/platform/roles/compose_project/templates/compose.deployment.yaml.j2; do
             echo "::group::${file}"
 
             if docker compose -f "${file}" config --quiet; then
@@ -393,10 +394,28 @@ jobs:
   ansible:
     name: Ansible Lint
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: run ansible-lint
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Build collection
+        working-directory: infrastructure/ansible/oilscope/platform
+        run: ansible-galaxy collection build
+
+      - name: Install collection
+        working-directory: infrastructure/ansible/oilscope/platform
+        run: |
+          ansible-galaxy collection install oilscope-platform-*.tar.gz
+
+      - name: Run ansible-lint
         uses: ansible/ansible-lint@main
         with:
           args: ""
