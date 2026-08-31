@@ -1,18 +1,44 @@
 # Inventory
 
-`oilscope.gcp.yml` builds the deployment inventory from live Compute Engine
-state using the upstream `google.cloud.gcp_compute` plugin, so a
-`terraform apply` that replaces a VM or changes an address is picked up without
-editing a host list.
+`oilscope.yml` builds the deployment inventory from live Compute Engine state,
+so a `terraform apply` that replaces a VM or changes an address is picked up
+without editing a host list.
 
-It is dynamic in the Ansible sense — recomputed on every run. Nothing polls in
-the background; `cache_timeout` only bounds how long a previous API response is
-reused.
+Every environment-specific value is derived from the project configuration
+JSON that Terraform also reads, so this file is identical for every
+environment — point `project_config_path` at a different configuration and it
+describes a different environment.
+
+The inventory is dynamic in the Ansible sense: recomputed on every run. Nothing
+polls in the background; `cache_timeout` only bounds how long a previous API
+response is reused.
+
+## How it fits together
+
+`oilscope.platform.oilscope_gcp` does not talk to GCP itself. It reads the
+project configuration, derives the settings below, and hands them to
+`google.cloud.gcp_compute`, which performs the discovery.
+
+The wrapper exists because `gcp_compute` can neither read the project
+configuration nor evaluate Jinja in its own configuration file — a template
+expression placed there is sent to the API as literal text.
+
+| Derived from the JSON | Becomes |
+| --- | --- |
+| `project_id` | the project queried |
+| `zone` | the zone queried |
+| `name_prefix` | the `labels.application` filter |
+| `environment` | the `labels.environment` filter |
+| `ssh_port` of the VM whose `role` is `bastion` | the bastion's `ansible_port` |
+
+Everything else — the grouping rules, the host-variable expressions, the
+workload SSH port — lives in the plugin's defaults. Changing those means
+editing the plugin and rebuilding the collection, not editing this directory.
 
 ## Setup
 
-All three steps are required. None of them is optional, and skipping one
-produces a failure that does not name the missing piece:
+All three steps are required, and skipping one produces a failure that does not
+name the missing piece:
 
 ```sh
 pip install -r infrastructure/ansible/requirements.txt
@@ -21,39 +47,48 @@ gcloud auth application-default login
 ```
 
 `requirements.yml` installs the `google.cloud` collection, which provides the
-`gcp_compute` plugin itself. `requirements.txt` installs the Python libraries
-that plugin imports at run time — `google-auth` and `requests`.
+`gcp_compute` plugin this one delegates to. `requirements.txt` installs the
+Python libraries that plugin imports at run time — `google-auth` and
+`requests`. `ansible-galaxy` installs collections, never Python packages, so
+neither file covers for the other.
 
-The two are separate on purpose: `ansible-galaxy` installs collections, never
-Python packages. The collection does ship its own `requirements.txt` naming the
-same libraries, but nothing ever executes it — installing them is the caller's
-job.
+This repository's own collection must also be installed, because there is no
+`ansible.cfg` pointing Ansible at the working copy:
 
-Both failures look like an inventory that simply does not exist, so they are
-worth recognising. Without the collection:
-
-```
-[WARNING]: Failed to parse inventory with 'auto' plugin: inventory config
-'.../oilscope.gcp.yml' specifies unknown plugin 'google.cloud.gcp_compute'
+```sh
+cd infrastructure/ansible/oilscope/platform && ansible-galaxy collection build --force && ansible-galaxy collection install oilscope-platform-*.tar.gz --force
 ```
 
-With the collection but without the Python libraries — the plugin refuses
-before reading a single option:
+Repeat that after every change to the plugin or to a role — Ansible reads the
+installed copy, not the files you just edited.
 
+## Pointing it at your configuration
+
+`oilscope.yml` carries no path of its own, because the project configuration
+does not live in the same place for everyone. The path is resolved in three
+steps, weakest first:
+
+1. the plugin's default, `../../terraform/env/dev.json`, relative to this
+   directory;
+2. the `OILSCOPE_PROJECT_CONFIG` environment variable;
+3. a `project_config_path` key written into the inventory file.
+
+So a configuration kept elsewhere needs no edit to a committed file:
+
+```sh
+OILSCOPE_PROJECT_CONFIG=infrastructure/terraform/env/mine.json \
+  ansible-inventory -i infrastructure/ansible/inventory/oilscope.yml --graph
 ```
-[WARNING]: Failed to parse inventory with 'auto' plugin: gce inventory plugin
-cannot start: Failed to import the required Python library (google-auth) on
-<host>'s Python <interpreter>.
-```
 
-In both cases Ansible then reports "No inventory was parsed, only implicit
-localhost is available" and every play matches nothing.
+Export it once and every later command picks it up. An absolute path is used as
+given; a relative one is tried against the working directory first, then
+against this directory, so a path typed from the repository root works.
 
-Then edit `projects`, `zones` and the `filters` labels in `oilscope.gcp.yml` to
-match the project configuration JSON for the environment being deployed. The
-plugin cannot read that JSON, and Jinja is not evaluated in this file, so those
-values cannot be derived automatically. Keeping one copy of the file per
-environment is the usual way to avoid editing it before each run.
+Adding `project_config_path` back into `oilscope.yml` would pin the path for
+everyone **and** make the variable ineffective, since a value set in the file
+wins over the environment. Keep personal paths in the variable, or in a local
+`*oilscope.yml` of your own — the filename only has to end in `oilscope.yml`
+for the plugin to claim it, and `local.oilscope.yml` is already ignored by git.
 
 ## Usage
 
@@ -64,20 +99,18 @@ ansible-inventory \
   --graph
 ```
 
-A misconfigured `projects` or `filters` value produces an **empty inventory and
-exit status 0**, not an error — the plugin swallows the API failure. If a
-playbook reports "no hosts matched", check the inventory with the command above
-before looking anywhere else.
+Hosts appear only after `terraform apply`: the inventory reports what exists in
+GCP, so before the infrastructure is created it is legitimately empty.
 
 ## Groups
 
-Terraform labels every VM with `role=<role>`, which `keyed_groups` turns into
-the `bastion`, `database`, `history`, `fetcher` and `ui` groups the deployment
-roles expect. Everything except the bastion also joins `workloads`.
+Terraform labels every VM with `role=<role>`, which becomes the `bastion`,
+`database`, `history`, `fetcher` and `ui` groups the deployment roles expect.
+Everything except the bastion also joins `workloads`.
 
-Note that the group name comes from the `role` label, not from the key in the
-project configuration JSON: `vms.infra` has `role: database` and therefore
-lands in the `database` group, which is what the `ui` role looks for.
+The group name comes from the `role` label, not from the key in the project
+configuration: `vms.infra` has `role: database` and therefore lands in the
+`database` group, which is what the `ui` role looks for.
 
 ## Host variables
 
@@ -87,6 +120,9 @@ name. Also set: `public_ip`, `oilscope_role`, `ansible_host`, `ansible_port`.
 For the bastion, `bastion_ssh_port` is always the final port from
 `vms.bastion.ssh_port`. `ansible_port` normally uses that value, but can use
 `OILSCOPE_BASTION_CONNECT_PORT` during the one-time bootstrap connection.
+
+Raw instance fields from the API are prefixed with `gcp_`, because two of them
+— `name` and `tags` — collide with names Ansible reserves.
 
 ## SSH
 
@@ -98,8 +134,7 @@ ProxyCommand always uses the bastion's final port; the bootstrap connection
 override applies only to the bastion itself. Pass the absolute project config
 path on every inventory, ad-hoc and playbook command.
 
-The non-default port belongs to the bastion alone — the Terraform workload
-firewall rule opens 22 and nothing else, so applying that port globally would
+The non-default port belongs to the bastion alone; applying it globally would
 break every workload connection.
 
 Terraform does not configure `sshd`. A newly created bastion therefore starts
@@ -164,5 +199,25 @@ final configured port and then reaches workload SSH on port 22.
 `ansible_user` (in `group_vars/all.yml`) defaults to the controller's own login
 name, because that is the name a key added through `gcloud compute ssh` is
 registered under in GCP project metadata. Everyone connects as themselves and
-no name is committed. Override for one run with `OILSCOPE_SSH_USER`, or edit
-`group_vars/all.yml` to pin a single shared account.
+no name is committed. Override for one run with `OILSCOPE_SSH_USER`, and the
+key with `OILSCOPE_SSH_KEY`.
+
+## When it looks broken
+
+| Symptom | Cause |
+| --- | --- |
+| `No inventory was parsed`, doubled path in the message | not run from the repository root |
+| `unknown plugin 'oilscope.platform.oilscope_gcp'` | this repository's collection is not installed, or was not rebuilt |
+| `unknown plugin 'google.cloud.gcp_compute'` | `requirements.yml` not installed |
+| `cannot start: ... library (google-auth)` | `requirements.txt` not installed |
+| `must define a 'vms' object` | the JSON is still `config_version` 2 |
+| **Empty `@all`, exit status 0** | `project_id`, `zone` or the labels do not match reality |
+| `Permission denied (publickey)` | the account is absent from `ssh_users`, or the wrong key |
+
+The empty-inventory case is the dangerous one: the delegate swallows API
+errors, so a wrong project or zone looks exactly like a working inventory with
+nothing in it. Check against GCP directly rather than trusting the graph:
+
+```sh
+gcloud compute instances list --format="table(name,zone,labels)"
+```
