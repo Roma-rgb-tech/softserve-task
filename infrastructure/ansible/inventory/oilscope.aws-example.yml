@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - us-east-1
+
+filters:
+  tag:application: oilscope
+  tag:environment: dev
+  instance-state-name:
+    - running
+    - pending
+
+hostnames:
+  - tag:Name
+
+vars_prefix: aws_
+
+keyed_groups:
+  - key: tags.role
+    prefix: ""
+    separator: ""
+
+groups:
+  workloads: tags.role is defined and tags.role != 'bastion'
+  cloud_aws: true
+
+compose:
+  internal_ip: private_ip_address
+  public_ip: public_ip_address | default('', true)
+
+  ansible_host: >-
+    public_ip_address
+    if tags.role | default('') == 'bastion'
+    else private_ip_address
+
+  oilscope_role: tags.role | default('')
+  oilscope_cloud: "'aws'"
+
+cache: true
+cache_plugin: ansible.builtin.jsonfile
+cache_connection: ~/.cache/oilscope-inventory
+cache_timeout: 300

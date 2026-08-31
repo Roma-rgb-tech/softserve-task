@@ -7,7 +7,7 @@ locals {
 }
 
 resource "google_project_service" "required" {
-  for_each = toset(local.required_apis)
+  for_each = toset([for api in local.required_apis : api if local.is_gcp])
 
   service = each.value
 

@@ -78,7 +78,7 @@ module "network" {
 ```
 
 The module outputs the management and workload subnet IDs and the role-based
-`network_tags` map.
+`workload_groups` map.
 
 ## Access procedure
 

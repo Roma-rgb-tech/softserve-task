@@ -26,6 +26,7 @@ keyed_groups:
 
 groups:
   workloads: labels.role is defined and labels.role != 'bastion'
+  cloud_gcp: true
 
 compose:
   internal_ip: networkInterfaces[0].networkIP
@@ -40,6 +41,7 @@ compose:
     else networkInterfaces[0].networkIP
 
   oilscope_role: labels.role | default('')
+  oilscope_cloud: "'gcp'"
 
 cache: true
 cache_plugin: ansible.builtin.jsonfile

@@ -1,9 +1,27 @@
 # Inventory
 
-`oilscope.gcp.yml` builds the deployment inventory from live Compute Engine
-state using the upstream `google.cloud.gcp_compute` plugin, so a
-`terraform apply` that replaces a VM or changes an address is picked up without
-editing a host list.
+This directory holds one inventory file per cloud: `oilscope.gcp.yml` builds
+the deployment inventory from live Compute Engine state through the upstream
+`google.cloud.gcp_compute` plugin, and `oilscope.aws.yml` does the same for EC2
+through `amazon.aws.aws_ec2`. Either way a `terraform apply` that replaces a VM
+or changes an address is picked up without editing a host list.
+
+**Pass the directory, not a file.** Ansible merges every inventory in it, and a
+plugin with no credentials or no matching instances simply contributes no
+hosts - so the same command works whichever cloud is currently up:
+
+```sh
+ansible-playbook oilscope.platform.deploy_workloads \
+  -i infrastructure/ansible/inventory/ \
+  -e project_config_path=/absolute/path/project-config.json
+```
+
+The group names and the composed variable names are identical in both files by
+contract. GCP builds groups from instance labels and AWS from instance tags,
+but a playbook targets `database` either way, and the `ui` role resolves its
+peers through `internal_ip` either way. Every host also joins `cloud_gcp` or
+`cloud_aws`, which is where the provider-specific endpoints in `group_vars`
+attach - see `docs/multi-cloud.md`.
 
 It is dynamic in the Ansible sense — recomputed on every run. Nothing polls in
 the background; `cache_timeout` only bounds how long a previous API response is
@@ -49,8 +67,10 @@ cannot start: Failed to import the required Python library (google-auth) on
 In both cases Ansible then reports "No inventory was parsed, only implicit
 localhost is available" and every play matches nothing.
 
-Then edit `projects`, `zones` and the `filters` labels in `oilscope.gcp.yml` to
-match the project configuration JSON for the environment being deployed. The
+Then copy the example for the cloud in use - `oilscope.gcp-example.yml` or
+`oilscope.aws-example.yml` - to the name without `-example`, and edit
+`projects`/`zones` (GCP) or `regions` (AWS) and the `filters` to match the
+project configuration JSON for the environment being deployed. The
 plugin cannot read that JSON, and Jinja is not evaluated in this file, so those
 values cannot be derived automatically. Keeping one copy of the file per
 environment is the usual way to avoid editing it before each run.
