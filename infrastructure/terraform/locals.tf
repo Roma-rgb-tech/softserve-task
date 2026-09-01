@@ -1,20 +1,10 @@
 locals {
   config = jsondecode(file(var.project_config_path))
 
-  bastion_vm = local.config.vms.bastion
-  workload_vms = {
-    for name, vm in local.config.vms : name => vm
-    if vm.role != "bastion"
-  }
+  clouds = distinct([
+    for name, vm in local.config.vms :
+    lookup(vm, "cloud", lookup(local.config, "default_cloud", ""))
+  ])
 
-  resource_prefix = "${local.config.name_prefix}-${local.config.environment}"
-
-  common_labels = merge(
-    {
-      application = local.config.name_prefix
-      environment = local.config.environment
-      managed_by  = "terraform"
-    },
-    local.config.common_labels,
-  )
+  vms = merge(module.gcp.vms, module.aws.vms)
 }

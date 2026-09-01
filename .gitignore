@@ -39,3 +39,6 @@ infrastructure/ansible/**/*.tar.gz
 infrastructure/ansible/inventory/oilscope.gcp.yml
 
 *.local.gcp.yml
+
+# Local backups of tfvars
+*.tfvars.bak
