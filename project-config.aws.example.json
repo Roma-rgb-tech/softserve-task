@@ -1,5 +1,5 @@
 {
-  "default_cloud": "gcp",
+  "default_cloud": "aws",
   "location": "us-east",
   "catalog": {
     "size": {
@@ -59,8 +59,11 @@
   },
   "environment": "dev",
   "name_prefix": "oilscope",
-  "gcp": {
-    "project_id": "example-project-12345"
+  "aws": {
+    "account_id": "123456789012",
+    "regions": [
+      "us-east-1"
+    ]
   },
   "common_labels": {
     "project": "example-oil-price-tracker",
@@ -76,7 +79,7 @@
   },
   "network": {
     "vpc_cidr": "10.0.0.0/16",
-    "management_subnet_cidr": "10.0.0.0/29",
+    "management_subnet_cidr": "10.0.0.0/28",
     "workload_subnet_cidr": "10.0.1.0/26",
     "ui_public_ports": [
       443
@@ -91,7 +94,7 @@
       "role": "bastion",
       "size": "micro",
       "os": "ubuntu-26.04",
-      "internal_ip": "10.0.0.2",
+      "internal_ip": "10.0.0.4",
       "boot_disk": {
         "size_gb": 10,
         "type": "balanced"
@@ -110,7 +113,7 @@
       "role": "database",
       "size": "micro",
       "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.2",
+      "internal_ip": "10.0.1.4",
       "boot_disk": {
         "size_gb": 10,
         "type": "balanced"
@@ -128,7 +131,7 @@
       "role": "history",
       "size": "small",
       "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.3",
+      "internal_ip": "10.0.1.5",
       "boot_disk": {
         "size_gb": 10,
         "type": "balanced"
@@ -146,7 +149,7 @@
       "role": "fetcher",
       "size": "micro",
       "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.4",
+      "internal_ip": "10.0.1.6",
       "boot_disk": {
         "size_gb": 10,
         "type": "balanced"
@@ -165,7 +168,7 @@
       "role": "ui",
       "size": "micro",
       "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.5",
+      "internal_ip": "10.0.0.5",
       "boot_disk": {
         "size_gb": 10,
         "type": "balanced"

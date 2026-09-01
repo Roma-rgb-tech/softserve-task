@@ -1,66 +1,67 @@
+output "clouds" {
+  description = "Clouds this state has resources in."
+  value       = sort(local.clouds)
+}
+
+output "regions" {
+  description = "Provider region per cloud in use, resolved from the portable location token."
+  value = {
+    for cloud, region in { gcp = module.gcp.region, aws = module.aws.region } :
+    cloud => region if region != null
+  }
+}
+
 output "bastion_public_ip" {
   description = "Bastion public IP."
-  value       = module.vm["bastion"].public_ip
+  value       = one([for name, vm in local.vms : vm.public_ip if vm.role == "bastion"])
+}
+
+output "workload_clouds" {
+  description = "Cloud each VM was created in."
+  value       = { for name, vm in local.vms : name => vm.cloud }
 }
 
 output "workload_vm_names" {
   description = "VM names by workload."
-  value = {
-    for name, workload in local.workload_vms : name => module.vm[name].name
-  }
+  value       = { for name, vm in local.vms : name => vm.name if vm.role != "bastion" }
 }
 
 output "workload_roles" {
   description = "Roles by workload."
-  value = {
-    for name, workload in local.workload_vms : name => workload.role
-  }
+  value       = { for name, vm in local.vms : name => vm.role if vm.role != "bastion" }
 }
 
 output "workload_internal_ips" {
   description = "Internal IPs by workload."
-  value = {
-    for name, workload in local.workload_vms : name => module.vm[name].internal_ip
-  }
+  value       = { for name, vm in local.vms : name => vm.internal_ip if vm.role != "bastion" }
 }
 
 output "workload_external_ips" {
   description = "External IPs by workload."
-  value = {
-    for name, workload in local.workload_vms : name => module.vm[name].public_ip
-  }
+  value       = { for name, vm in local.vms : name => vm.public_ip if vm.role != "bastion" }
 }
 
-output "workload_network_tags" {
-  description = "Network tags by workload."
-  value = {
-    for name, workload in local.workload_vms : name => module.vm[name].network_tags
-  }
+output "workload_network_groups" {
+  description = "Network group identifiers by workload. Compute Engine network tags on GCP; security group IDs on AWS."
+  value       = { for name, vm in local.vms : name => vm.network_groups if vm.role != "bastion" }
 }
 
-output "workload_service_account_emails" {
-  description = "Service-account emails by workload."
-  value = {
-    for name, workload in local.workload_vms : name => module.vm[name].service_account_email
-  }
-}
-
-output "secret_ids" {
-  description = "Secret Manager container IDs created from the project configuration."
-  value       = sort(local.all_secret_ids)
-}
-
-output "secret_resource_names" {
-  description = "Fully qualified Secret Manager resource names, by secret ID."
-  value = {
-    for secret_id, secret in google_secret_manager_secret.this : secret_id => secret.name
-  }
+output "workload_runtime_identities" {
+  description = "Identity each workload runs as. Service-account emails on GCP; IAM role names on AWS."
+  value       = { for name, vm in local.vms : name => vm.runtime_identity if vm.role != "bastion" }
 }
 
 output "workload_secret_access" {
-  description = "Secret IDs each workload service account may read. Names only - never values."
-  value = {
-    for name, workload in local.workload_vms :
-    name => sort(distinct(values(workload.secret_mappings)))
-  }
+  description = "Secret IDs each workload runtime identity may read. Names only - never values."
+  value       = { for name, vm in local.vms : name => vm.secret_access if vm.role != "bastion" }
+}
+
+output "secret_ids" {
+  description = "Secret container IDs created from the project configuration."
+  value       = sort(distinct(concat(keys(module.gcp.secret_resource_names), keys(module.aws.secret_resource_names))))
+}
+
+output "secret_resource_names" {
+  description = "Fully qualified secret resource names, by secret ID. Never values."
+  value       = merge(module.gcp.secret_resource_names, module.aws.secret_resource_names)
 }
