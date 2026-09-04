@@ -1,16 +1,14 @@
 resource "google_compute_network" "main" {
-  count = local.network_count
+  count = local.count
 
   name = "${local.resource_prefix}-vpc"
 
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"
-
-  depends_on = [google_project_service.required]
 }
 
 resource "google_compute_subnetwork" "management" {
-  count = local.network_count
+  count = local.count
 
   name          = "${local.resource_prefix}-management"
   network       = google_compute_network.main[0].id
@@ -19,7 +17,7 @@ resource "google_compute_subnetwork" "management" {
 }
 
 resource "google_compute_subnetwork" "workload" {
-  count = local.network_count
+  count = local.count
 
   name          = "${local.resource_prefix}-workload"
   network       = google_compute_network.main[0].id

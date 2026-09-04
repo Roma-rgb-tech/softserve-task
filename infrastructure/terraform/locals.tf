@@ -6,5 +6,5 @@ locals {
     lookup(vm, "cloud", lookup(local.config, "default_cloud", ""))
   ])
 
-  vms = merge(module.gcp.vms, module.aws.vms)
+  vms = merge(module.gcp_vm.vms, module.aws_vm.vms)
 }

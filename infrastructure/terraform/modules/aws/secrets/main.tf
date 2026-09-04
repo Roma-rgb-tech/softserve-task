@@ -26,12 +26,12 @@ resource "aws_iam_role_policy" "workload_secret_access" {
   for_each = local.secret_reading_vms
 
   name   = "${local.resource_prefix}-${each.key}-secret-access"
-  role   = aws_iam_role.workload[each.key].name
+  role   = var.runtime_identities[each.key]
   policy = data.aws_iam_policy_document.workload_secret_access[each.key].json
 }
 
 data "aws_iam_policy_document" "version_adder" {
-  for_each = toset(length(var.secret_version_managers) > 0 ? local.secret_ids : [])
+  for_each = toset(length(local.version_managers) > 0 ? local.secret_ids : [])
 
   statement {
     effect  = "Allow"
@@ -39,7 +39,7 @@ data "aws_iam_policy_document" "version_adder" {
 
     principals {
       type        = "AWS"
-      identifiers = var.secret_version_managers
+      identifiers = local.version_managers
     }
 
     resources = ["*"]
@@ -47,8 +47,18 @@ data "aws_iam_policy_document" "version_adder" {
 }
 
 resource "aws_secretsmanager_secret_policy" "version_adder" {
-  for_each = toset(length(var.secret_version_managers) > 0 ? local.secret_ids : [])
+  for_each = toset(length(local.version_managers) > 0 ? local.secret_ids : [])
 
   secret_arn = aws_secretsmanager_secret.this[each.value].arn
   policy     = data.aws_iam_policy_document.version_adder[each.value].json
+
+  lifecycle {
+    precondition {
+      condition = alltrue([
+        for principal in local.version_managers :
+        can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:(root|user/.+|role/.+)$", principal))
+      ])
+      error_message = "Each aws.secret_version_managers entry must be an IAM ARN, for example arn:aws:iam::123456789012:user/name."
+    }
+  }
 }

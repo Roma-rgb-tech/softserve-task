@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# EC2 installs the key pair into the image's default account, so AWS hosts are
+# reached as that account rather than as a named operator. Compute Engine
+# creates the named accounts from instance metadata and has no default one.
+ansible_user: ubuntu

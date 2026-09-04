@@ -102,13 +102,16 @@ Generate database passwords with `openssl rand -hex 32`. `-hex` rather than
 inside a `postgres://` URL and break it if they are not.
 
 Adding versions requires `roles/secretmanager.secretVersionAdder`. That grant is
-made by Terraform from the `secret_version_managers` variable:
+made by Terraform from the `secret_version_managers` list each cloud section of
+the project configuration carries:
 
-```hcl
-secret_version_managers = [
-  "user:name@example.com",
-]
+```json
+"gcp": { "secret_version_managers": ["user:name@example.com"] },
+"aws": { "secret_version_managers": ["arn:aws:iam::123456789012:user/name"] }
 ```
+
+The two lists are separate because the principal formats are not
+interchangeable, and a single list could not be validated against either.
 
 `secretVersionAdder` is deliberately not `secretAccessor`. It allows adding a new
 version and nothing else — a person listed here can rotate a credential without

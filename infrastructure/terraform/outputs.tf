@@ -6,7 +6,7 @@ output "clouds" {
 output "regions" {
   description = "Provider region per cloud in use, resolved from the portable default_region token."
   value = {
-    for cloud, region in { gcp = module.gcp.region, aws = module.aws.region } :
+    for cloud, region in { gcp = module.gcp_vm.region, aws = module.aws_vm.region } :
     cloud => region if region != null
   }
 }
@@ -53,10 +53,10 @@ output "workload_secret_access" {
 
 output "secret_ids" {
   description = "Secret container IDs created from the project configuration."
-  value       = sort(distinct(concat(keys(module.gcp.secret_resource_names), keys(module.aws.secret_resource_names))))
+  value       = sort(distinct(concat(keys(module.gcp_secrets.secret_resource_names), keys(module.aws_secrets.secret_resource_names))))
 }
 
 output "secret_resource_names" {
   description = "Fully qualified secret resource names, by secret ID. Never values."
-  value       = merge(module.gcp.secret_resource_names, module.aws.secret_resource_names)
+  value       = merge(module.gcp_secrets.secret_resource_names, module.aws_secrets.secret_resource_names)
 }

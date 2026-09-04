@@ -1,5 +1,5 @@
 resource "aws_vpc" "main" {
-  count = local.network_count
+  count = local.count
 
   cidr_block           = local.config.network.vpc_cidr
   enable_dns_support   = true
@@ -9,7 +9,7 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_subnet" "management" {
-  count = local.network_count
+  count = local.count
 
   vpc_id            = aws_vpc.main[0].id
   cidr_block        = local.config.network.management_subnet_cidr
@@ -21,7 +21,7 @@ resource "aws_subnet" "management" {
 }
 
 resource "aws_subnet" "workload" {
-  count = local.network_count
+  count = local.count
 
   vpc_id            = aws_vpc.main[0].id
   cidr_block        = local.config.network.workload_subnet_cidr
@@ -33,7 +33,7 @@ resource "aws_subnet" "workload" {
 }
 
 resource "aws_internet_gateway" "main" {
-  count = local.network_count
+  count = local.count
 
   vpc_id = aws_vpc.main[0].id
 

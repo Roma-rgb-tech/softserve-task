@@ -8,14 +8,12 @@ variable "config" {
   }
 }
 
-variable "enable_bastion_ssh_bootstrap" {
-  description = "Temporarily allow direct bastion SSH on port 22 while Ansible configures the final SSH port."
-  type        = bool
-  default     = false
+variable "subnets" {
+  description = "Subnet identifiers by name, from the network module."
+  type        = map(string)
 }
 
-variable "secret_version_managers" {
-  description = "IAM members allowed to add new versions to every secret created here."
-  type        = list(string)
-  default     = []
+variable "network_tags" {
+  description = "Network tag by workload role, from the network module."
+  type        = map(string)
 }

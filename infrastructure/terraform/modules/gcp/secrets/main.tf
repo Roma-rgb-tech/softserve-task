@@ -7,8 +7,6 @@ resource "google_secret_manager_secret" "this" {
   replication {
     auto {}
   }
-
-  depends_on = [google_project_service.required]
 }
 
 resource "google_secret_manager_secret_iam_member" "workload_access" {
@@ -16,7 +14,7 @@ resource "google_secret_manager_secret_iam_member" "workload_access" {
 
   secret_id = google_secret_manager_secret.this[each.value.secret_id].secret_id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.workload[each.value.vm_name].email}"
+  member    = "serviceAccount:${var.runtime_identities[each.value.vm_name]}"
 }
 
 resource "google_secret_manager_secret_iam_member" "version_adder" {
@@ -25,4 +23,14 @@ resource "google_secret_manager_secret_iam_member" "version_adder" {
   secret_id = google_secret_manager_secret.this[each.value.secret_id].secret_id
   role      = "roles/secretmanager.secretVersionAdder"
   member    = each.value.member
+
+  lifecycle {
+    precondition {
+      condition = alltrue([
+        for member in local.version_managers :
+        can(regex("^(user|group|serviceAccount|principal|principalSet):.+$", member))
+      ])
+      error_message = "Each gcp.secret_version_managers entry must be a fully qualified IAM member, for example user:name@example.com."
+    }
+  }
 }

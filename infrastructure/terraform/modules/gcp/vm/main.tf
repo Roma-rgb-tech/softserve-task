@@ -4,8 +4,6 @@ resource "google_service_account" "workload" {
   account_id   = "${local.resource_prefix}-${each.key}"
   display_name = "${local.resource_prefix}-${each.key}"
   description  = "Runtime identity for the ${local.resource_prefix}-${each.key} workload VM"
-
-  depends_on = [google_project_service.required]
 }
 
 resource "google_compute_address" "public" {
@@ -40,7 +38,7 @@ resource "google_compute_instance" "workload" {
   }
 
   network_interface {
-    subnetwork = each.value.public_subnet ? google_compute_subnetwork.management[0].id : google_compute_subnetwork.workload[0].id
+    subnetwork = each.value.public_subnet ? var.subnets.management : var.subnets.workload
     network_ip = each.value.internal_ip
 
     dynamic "access_config" {
@@ -70,7 +68,7 @@ resource "google_compute_instance" "workload" {
     }
 
     precondition {
-      condition     = lookup(lookup(local.config, "gcp", {}), "project_id", "") != ""
+      condition     = local.project_id != ""
       error_message = "A VM targets gcp, so the configuration must contain gcp.project_id."
     }
 
@@ -80,11 +78,11 @@ resource "google_compute_instance" "workload" {
     }
   }
 
-  metadata = {
-    "enable-oslogin" = "FALSE"
-    "ssh-keys" = join("\n", [
-      for username, public_key in local.config.ssh_users :
-      "${username}:${trimspace(public_key)}"
-    ])
-  }
+  metadata = merge(
+    {
+      "enable-oslogin" = "FALSE"
+      "ssh-keys"       = local.ssh_keys
+    },
+    each.value.startup_script == null ? {} : { "startup-script" = each.value.startup_script },
+  )
 }
