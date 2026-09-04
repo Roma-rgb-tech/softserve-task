@@ -196,6 +196,15 @@
         "project_id": {
           "description": "Target GCP project ID.",
           "type": "string"
+        },
+        "secret_version_managers": {
+          "description": "IAM members allowed to add new versions to every secret. Adding a version does not grant reading one.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(user|group|serviceAccount|principal|principalSet):.+$"
+          },
+          "uniqueItems": true
         }
       }
     },
@@ -204,11 +213,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "account_id": {
-          "description": "Target AWS account ID, recorded for humans.",
-          "type": "string",
-          "pattern": "^[0-9]{12}$"
-        },
         "regions": {
           "description": "Regions the dynamic inventory searches for this account's instances. AWS partitions resources by region, so the inventory cannot find them without one.",
           "type": "array",
@@ -216,6 +220,15 @@
             "type": "string"
           },
           "minItems": 1
+        },
+        "secret_version_managers": {
+          "description": "IAM principals allowed to add new versions to every secret. ARNs here; IAM members in the gcp section.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^arn:aws[a-z-]*:iam::[0-9]{12}:(root|user/.+|role/.+)$"
+          },
+          "uniqueItems": true
         }
       }
     },
@@ -249,6 +262,11 @@
             "balanced",
             "ssd"
           ]
+        },
+        "iops": {
+          "description": "Provisioned IOPS. AWS requires it for the disk classes that resolve to io1 or io2, and ignores it for the rest.",
+          "type": "integer",
+          "minimum": 100
         }
       }
     },
@@ -379,6 +397,24 @@
         },
         "cloud": {
           "$ref": "#/$defs/cloud"
+        },
+        "ci": {
+          "description": "Optional boot content for this VM. Present means the machine configures itself at first boot: a startup script on GCP, user data on AWS.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "startup_script"
+          ],
+          "properties": {
+            "startup_script": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "ssh_bootstrap": {
+          "description": "Temporarily allow direct SSH on port 22 while the final sshd policy is installed. Bastion only; turn off after the first deployment.",
+          "type": "boolean"
         }
       },
       "allOf": [

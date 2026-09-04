@@ -60,12 +60,17 @@
   "environment": "dev",
   "name_prefix": "oilscope",
   "gcp": {
-    "project_id": "example-project-12345"
+    "project_id": "example-project-12345",
+    "secret_version_managers": [
+      "user:example-operator@example.com"
+    ]
   },
   "aws": {
-    "account_id": "123456789012",
     "regions": [
       "us-east-1"
+    ],
+    "secret_version_managers": [
+      "arn:aws:iam::123456789012:user/example-operator"
     ]
   },
   "common_labels": {
@@ -110,7 +115,8 @@
       "ssh_port": 8787,
       "allowed_cidrs": [
         "192.0.2.10/32"
-      ]
+      ],
+      "ssh_bootstrap": false
     },
     "infra": {
       "role": "database",

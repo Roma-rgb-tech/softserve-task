@@ -1,14 +1,22 @@
+locals {
+  regions = {
+    gcp = module.gcp.region
+    aws = module.aws.region
+  }
+
+  vms = merge(module.gcp.vms, module.aws.vms)
+}
+
 output "clouds" {
   description = "Clouds this state has resources in."
-  value       = sort(local.clouds)
+  value = sort([
+    for cloud, region in local.regions : cloud if region != null
+  ])
 }
 
 output "regions" {
   description = "Provider region per cloud in use, resolved from the portable default_region token."
-  value = {
-    for cloud, region in { gcp = module.gcp.region, aws = module.aws.region } :
-    cloud => region if region != null
-  }
+  value       = { for cloud, region in local.regions : cloud => region if region != null }
 }
 
 output "bastion_public_ip" {

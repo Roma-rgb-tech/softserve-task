@@ -63,9 +63,90 @@ outputs. The root hands each of them the whole configuration and merges the
 network tags or security group IDs, or whether `runtime_identity` is a
 service-account email or an IAM role name.
 
-Anything genuinely cloud-specific sits in its own configuration section - `gcp`
-for the project ID, `aws` for the account and its regions - so it never
-pretends to be portable.
+## How the modules are laid out
+
+There is no per-cloud wrapper. Every module is called from the root and receives
+the whole configuration:
+
+```
+modules/<cloud>            wires the seven below together
+modules/<cloud>/network    the VPC and its subnets
+modules/<cloud>/routing    the default routes and the NAT that carries egress
+modules/<cloud>/firewall   the rules, kept as data rather than as resources
+modules/<cloud>/addresses  the external addresses public workloads receive
+modules/<cloud>/iam        the identity every VM runs as
+modules/<cloud>/vm         the instances themselves
+modules/<cloud>/secrets    secret containers and the access each identity gets
+```
+
+The same seven names on both clouds. The root calls two modules and passes each
+the configuration and nothing else; every identifier one module needs from
+another is wired one level down, inside `modules/gcp` and `modules/aws`.
+
+Both clouds carry the same three modules. Enabling the Google APIs is not among
+them: a project is created by the bootstrap script, and the services a project
+offers are part of creating it, so the script switches them on and the
+deployment configuration assumes they are already there. Keeping that step out
+of Terraform also keeps `serviceusage.serviceUsageAdmin` off the deployment
+service account.
+
+**Each module decides for itself.** None of them is given a flag saying whether
+this cloud is in use - every one reads `config.vms`, selects the VMs that target
+its cloud, and creates nothing when that set is empty:
+
+```hcl
+selected = { for name, vm in config.vms : name => vm
+             if lookup(vm, "cloud", default_cloud) == "aws" }
+
+enabled = length(selected) > 0
+```
+
+The root passes data between them only where a dependency is real: subnet and
+group identifiers from `network` into `vm`, runtime identities from `vm` into
+`secrets`. Nothing flows back.
+
+The alternative - one wrapper per cloud calling private submodules - keeps the
+root shorter but makes every module reachable only through its wrapper. Flat
+modules stay reusable on their own, and `terraform state list` reads as a list
+of named things rather than a nest.
+
+**Policy becomes data.** Firewall rules are not six near-identical resources any
+more; they are a map in the network module's `locals.tf` that one resource
+renders with `for_each` and a `dynamic` block:
+
+```hcl
+"history-api" = {
+  enabled     = local.enabled
+  source_tags = [local.network_tags.ui]
+  target_tags = [local.network_tags.history]
+  allow       = [{ protocol = "tcp", ports = [tostring(...history_api)] }]
+}
+```
+
+Adding a rule is a map entry, and both clouds describe rules in the same shape
+even though one renders them into `google_compute_firewall` and the other into
+security group rules. The AWS route tables use `dynamic "route"` for the same
+reason: the two tables differ only in which gateway the default route names.
+
+## Boot content the configuration carries
+
+A VM may name its own first-boot content:
+
+```json
+"bastion": {
+  "ssh_bootstrap": true,
+  "ci": { "startup_script": "#!/bin/bash
+..." }
+}
+```
+
+`ci.startup_script` becomes instance metadata on GCP and user data on AWS, so a
+machine can configure itself before anything connects to it. `ssh_bootstrap`
+opens port 22 for the first deployment only, while the final sshd policy is
+installed; both live in the configuration rather than in a command-line
+variable, because they describe an environment, not an invocation.
+
+The only variable the root still declares is `project_config_path`.
 
 ## What is not hardcoded at all
 
@@ -104,11 +185,11 @@ once:
 
 ```sh
 terraform state mv 'module.network.google_compute_network.main' \
-                   'module.gcp.google_compute_network.main[0]'
+                   'module.gcp_network.google_compute_network.main[0]'
 
 for vm in bastion infra history fetcher ui; do
   terraform state mv "module.vm[\"$vm\"].google_compute_instance.workload" \
-                     "module.gcp.google_compute_instance.workload[\"$vm\"]"
+                     "module.gcp_vm.google_compute_instance.workload[\"$vm\"]"
 done
 ```
 
@@ -152,10 +233,12 @@ stricter cloud costs nothing and buys the thing this whole change is about -
 per cloud, `ui.internal_ip` would have to differ too, and switching clouds
 would mean editing addresses rather than one line.
 
-**SSH accounts.** Compute Engine takes public keys through instance metadata.
-EC2 has no equivalent channel, so the AWS module writes a minimal cloud-init
-document that creates the accounts and installs the keys, and nothing else.
-Docker and the application remain Ansible's job in both clouds.
+**SSH accounts.** Compute Engine takes public keys through instance metadata and
+creates the named accounts from them. EC2 has no equivalent channel: it installs
+a single key pair into the image's default account, `ubuntu` on Canonical
+images. The AWS module therefore registers one `aws_key_pair` from the first
+entry of `ssh_users`, and `group_vars/cloud_aws.yml` sets `ansible_user` to that
+default account. This is the one place where the connection differs per cloud.
 
 **Reading secrets.** Both clouds grant a workload access to its own secrets and
 nothing more, and in both the VM proves its identity to the metadata service
