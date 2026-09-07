@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Merged on top of the Ops Agent defaults, which already collect host metrics
+# and syslog. Only the container logs are added here.
+#
+# The receiver ID becomes the Cloud Logging log ID, so the log-based metric
+# Terraform creates looks for log_id("{{ monitoring_agent_log_id }}").
+logging:
+  receivers:
+    {{ monitoring_agent_log_id }}:
+      type: files
+      include_paths:
+        - {{ monitoring_agent_container_logs }}
+  processors:
+    # The Docker json-file driver writes one JSON object per line. Parsing it
+    # here puts the application's own line in jsonPayload.log, which is what
+    # the 5xx metric matches on - unparsed, the whole envelope would be one
+    # opaque string.
+    container_json:
+      type: parse_json
+  service:
+    pipelines:
+      {{ monitoring_agent_log_id }}:
+        receivers:
+          - {{ monitoring_agent_log_id }}
+        processors:
+          - container_json

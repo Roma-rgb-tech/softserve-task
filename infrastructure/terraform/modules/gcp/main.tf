@@ -46,3 +46,10 @@ module "secrets" {
   config             = var.config
   runtime_identities = module.iam.runtime_identities
 }
+
+module "monitoring" {
+  source = "./monitoring"
+
+  config     = var.config
+  public_ips = module.addresses.public_ips
+}

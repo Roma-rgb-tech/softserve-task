@@ -68,3 +68,11 @@ output "secret_resource_names" {
   description = "Fully qualified secret resource names, by secret ID. Never values."
   value       = merge(module.gcp.secret_resource_names, module.aws.secret_resource_names)
 }
+
+output "monitoring" {
+  description = "Dashboard and alert delivery per cloud, for the clouds where monitoring is configured."
+  value = {
+    for cloud, summary in { gcp = module.gcp.monitoring, aws = module.aws.monitoring } :
+    cloud => summary if summary.dashboard != null
+  }
+}

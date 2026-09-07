@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Refuse to configure an agent without the project configuration
+  ansible.builtin.fail:
+    msg: >-
+      monitoring_agent_config_path is empty. Pass project_config_path, the same
+      file Terraform reads - the log destination is derived from it.
+  when: monitoring_agent_config_path | length == 0
+
+- name: Read the project configuration
+  ansible.builtin.set_fact:
+    monitoring_agent_config: >-
+      {{ lookup('ansible.builtin.file', monitoring_agent_config_path) | from_json }}
+
+# Terraform creates the log group and the log-based metrics from the same two
+# values, so deriving them here rather than passing them in keeps one source.
+- name: Derive the log destination
+  ansible.builtin.set_fact:
+    monitoring_agent_log_group: >-
+      /{{ monitoring_agent_config.name_prefix }}/{{ monitoring_agent_config.environment }}/docker
+    monitoring_agent_log_id: docker
+    monitoring_agent_cloud: >-
+      {{ 'gcp' if 'cloud_gcp' in group_names else 'aws' if 'cloud_aws' in group_names else '' }}
+
+- name: Refuse to configure an agent for an unknown cloud
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} is in neither cloud_gcp nor cloud_aws, so there
+      is no native agent to install.
+  when: monitoring_agent_cloud | length == 0
+
+- name: Install and configure the cloud's own agent
+  ansible.builtin.include_tasks: "{{ monitoring_agent_cloud }}.yml"

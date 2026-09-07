@@ -376,6 +376,11 @@ Two honest caveats:
   enough; it stays in the history. Rotate the credential at its source first,
   then clean up. See [`docs/secrets.md`](docs/secrets.md).
 
+- **Monitoring is the cloud's own.** CPU, memory, disk, availability, 5xx
+  responses and spend are watched by Cloud Monitoring and CloudWatch, with the
+  alerts mailed from the same configuration on both sides. Nothing self-hosted.
+  See [`docs/monitoring.md`](docs/monitoring.md).
+
 If the `gitleaks` hook fails to build on your machine, swap it for the
 container-based variant in `.pre-commit-config.yaml`:
 

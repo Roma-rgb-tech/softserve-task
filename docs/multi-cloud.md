@@ -65,25 +65,23 @@ service-account email or an IAM role name.
 
 ## How the modules are laid out
 
-There is no per-cloud wrapper. Every module is called from the root and receives
-the whole configuration:
+The root calls one module per cloud and passes each the configuration and
+nothing else. Every identifier one module needs from another is wired one level
+down, inside `modules/gcp` and `modules/aws`:
 
 ```
-modules/<cloud>            wires the seven below together
-modules/<cloud>/network    the VPC and its subnets
-modules/<cloud>/routing    the default routes and the NAT that carries egress
-modules/<cloud>/firewall   the rules, kept as data rather than as resources
-modules/<cloud>/addresses  the external addresses public workloads receive
-modules/<cloud>/iam        the identity every VM runs as
-modules/<cloud>/vm         the instances themselves
-modules/<cloud>/secrets    secret containers and the access each identity gets
+modules/<cloud>             wires the eight below together
+modules/<cloud>/network     the VPC and its subnets
+modules/<cloud>/routing     the default routes and the NAT that carries egress
+modules/<cloud>/firewall    the rules, kept as data rather than as resources
+modules/<cloud>/addresses   the external addresses public workloads receive
+modules/<cloud>/iam         the identity every VM runs as
+modules/<cloud>/vm          the instances themselves
+modules/<cloud>/secrets     secret containers and the access each identity gets
+modules/<cloud>/monitoring  alerts, dashboards and the budget
 ```
 
-The same seven names on both clouds. The root calls two modules and passes each
-the configuration and nothing else; every identifier one module needs from
-another is wired one level down, inside `modules/gcp` and `modules/aws`.
-
-Both clouds carry the same three modules. Enabling the Google APIs is not among
+The same eight names on both clouds. Enabling the Google APIs is not among
 them: a project is created by the bootstrap script, and the services a project
 offers are part of creating it, so the script switches them on and the
 deployment configuration assumes they are already there. Keeping that step out
@@ -101,14 +99,18 @@ selected = { for name, vm in config.vms : name => vm
 enabled = length(selected) > 0
 ```
 
-The root passes data between them only where a dependency is real: subnet and
-group identifiers from `network` into `vm`, runtime identities from `vm` into
-`secrets`. Nothing flows back.
+**The wiring is the dependency graph.** Passing `module.network.subnets` into
+`vm` is not only how the subnet ID arrives; it is also what tells Terraform the
+subnet has to exist first, and what tells it to tear the VM down before the
+subnet on the way out. There is no `depends_on` anywhere in the configuration,
+because every ordering that matters is already implied by a value someone
+reads.
 
-The alternative - one wrapper per cloud calling private submodules - keeps the
-root shorter but makes every module reachable only through its wrapper. Flat
-modules stay reusable on their own, and `terraform state list` reads as a list
-of named things rather than a nest.
+The one place the two wrappers genuinely differ is the direction between `vm`
+and `addresses`. A Compute Engine instance references the address it should
+carry, so `addresses` comes first; an elastic IP references the instance it
+attaches to, so `vm` does. Each wrapper's `outputs.tf` then hands the root the
+same shape, and the root never learns that the two clouds disagree.
 
 **Policy becomes data.** Firewall rules are not six near-identical resources any
 more; they are a map in the network module's `locals.tf` that one resource

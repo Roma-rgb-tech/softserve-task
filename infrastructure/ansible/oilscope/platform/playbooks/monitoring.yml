@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Install the monitoring agents
+  hosts: all
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: oilscope.platform.monitoring_agent
+      vars:
+        monitoring_agent_config_path: "{{ project_config_path }}"

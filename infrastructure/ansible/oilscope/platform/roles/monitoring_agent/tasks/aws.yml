@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Fetch the CloudWatch agent package
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ monitoring_agent_cloudwatch_package_url }}"
+    dest: /usr/local/src/amazon-cloudwatch-agent.deb
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the CloudWatch agent
+  become: true
+  ansible.builtin.apt:
+    deb: /usr/local/src/amazon-cloudwatch-agent.deb
+
+- name: Configure the CloudWatch agent
+  become: true
+  ansible.builtin.template:
+    src: cloudwatch-agent.json.j2
+    dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Load the CloudWatch agent configuration
+
+# fetch-config both loads the file and starts the collector, so the first run
+# needs no separate start. Afterwards systemd keeps it up across reboots.
+- name: Apply a pending configuration change
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the CloudWatch agent
+  become: true
+  ansible.builtin.systemd_service:
+    name: amazon-cloudwatch-agent
+    enabled: true
+    state: started

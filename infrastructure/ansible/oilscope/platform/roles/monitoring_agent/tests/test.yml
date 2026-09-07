@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Validate the monitoring_agent role
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    # include_role does not extend ignore_errors to the tasks it pulls in, so
+    # the failure has to be caught by a rescue rather than ignored.
+    - name: Include the role without a configuration file
+      block:
+        - name: Include the role
+          ansible.builtin.include_role:
+            name: monitoring_agent
+
+        - name: Record that the role accepted an empty path
+          ansible.builtin.set_fact:
+            monitoring_agent_accepted: true
+
+      rescue:
+        - name: Record that the role refused an empty path
+          ansible.builtin.set_fact:
+            monitoring_agent_accepted: false
+
+    - name: Verify a missing configuration is rejected
+      ansible.builtin.assert:
+        that:
+          - not monitoring_agent_accepted
+        fail_msg: The role ran without a project configuration file.

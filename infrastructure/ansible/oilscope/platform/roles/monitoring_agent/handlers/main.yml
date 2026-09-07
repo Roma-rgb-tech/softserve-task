@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Restart the Ops Agent
+  become: true
+  ansible.builtin.systemd_service:
+    name: google-cloud-ops-agent
+    state: restarted
+
+# The agent does not read the JSON file directly: fetch-config translates it
+# into the internal format and restarts the collector, which is why this is a
+# command rather than a service restart.
+- name: Load the CloudWatch agent configuration
+  become: true
+  ansible.builtin.command:
+    argv:
+      - /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl
+      - -a
+      - fetch-config
+      - -m
+      - ec2
+      - -s
+      - -c
+      - file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+  changed_when: true

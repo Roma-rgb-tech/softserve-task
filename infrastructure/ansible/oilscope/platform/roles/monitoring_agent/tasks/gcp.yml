@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Fetch the Ops Agent repository installer
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ monitoring_agent_ops_agent_script_url }}"
+    dest: /usr/local/src/add-google-cloud-ops-agent-repo.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+# The installer adds Google's apt repository and pulls the agent from it. The
+# creates guard is the agent's own install prefix, so a second run does nothing.
+- name: Install the Ops Agent
+  become: true
+  ansible.builtin.command:
+    argv:
+      - /usr/local/src/add-google-cloud-ops-agent-repo.sh
+      - --also-install
+    creates: /opt/google-cloud-ops-agent
+
+- name: Configure the Ops Agent
+  become: true
+  ansible.builtin.template:
+    src: ops-agent-config.yaml.j2
+    dest: /etc/google-cloud-ops-agent/config.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the Ops Agent
+
+- name: Enable and start the Ops Agent
+  become: true
+  ansible.builtin.systemd_service:
+    name: google-cloud-ops-agent
+    enabled: true
+    state: started

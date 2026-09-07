@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# Project configuration JSON - the same file Terraform reads. The log group and
+# the log ID are derived from it, so the agent writes exactly where the alert
+# policies look.
+monitoring_agent_config_path: "{{ project_config_path | default('') }}"
+
+# Where the Docker json-file driver keeps container output. Every service on
+# these hosts runs under Compose, so this one glob is the whole application log.
+monitoring_agent_container_logs: /var/lib/docker/containers/*/*-json.log
+
+monitoring_agent_interval: 60
+
+monitoring_agent_ops_agent_script_url: https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+monitoring_agent_cloudwatch_package_url: https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb

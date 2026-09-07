@@ -15,3 +15,11 @@ output "secret_resource_names" {
   description = "Fully qualified secret resource names, by secret ID. Never values."
   value       = module.secrets.secret_resource_names
 }
+
+output "monitoring" {
+  description = "What Cloud Monitoring set up: the dashboard, and how an alert leaves the cloud."
+  value = {
+    dashboard = module.monitoring.dashboard_id
+    delivery  = length(module.monitoring.notification_channels) > 0 ? "email notification channels" : null
+  }
+}
