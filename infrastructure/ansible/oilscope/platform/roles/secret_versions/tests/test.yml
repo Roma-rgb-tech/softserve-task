@@ -4,13 +4,25 @@
   hosts: localhost
   gather_facts: false
   tasks:
+    # include_role does not extend ignore_errors to the tasks it pulls in, so
+    # the failure has to be caught by a rescue rather than ignored.
     - name: Include the role without a configuration file
-      ansible.builtin.include_role:
-        name: secret_versions
-      register: secret_versions_no_config
-      ignore_errors: true
+      block:
+        - name: Include the role
+          ansible.builtin.include_role:
+            name: secret_versions
+
+        - name: Record that the role accepted an empty path
+          ansible.builtin.set_fact:
+            secret_versions_accepted: true
+
+      rescue:
+        - name: Record that the role refused an empty path
+          ansible.builtin.set_fact:
+            secret_versions_accepted: false
 
     - name: Verify a missing configuration is rejected
       ansible.builtin.assert:
         that:
-          - secret_versions_no_config is failed
+          - not secret_versions_accepted
+        fail_msg: The role ran without a project configuration file.

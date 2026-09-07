@@ -14,5 +14,10 @@ secret_versions_region: ""
 # Upload a subset. Entries match a container ID or a variable name.
 secret_versions_only: []
 
+# Containers the role may invent a value for when the environment holds none,
+# on top of generated_secrets in the configuration. Entries match a container
+# ID or a variable name.
+secret_versions_generate: []
+
 secret_versions_gcloud: gcloud
 secret_versions_aws: aws

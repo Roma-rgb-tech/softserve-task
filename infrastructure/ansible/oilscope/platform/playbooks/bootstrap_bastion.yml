@@ -4,6 +4,31 @@
   hosts: bastion
   become: true
   gather_facts: false
+  pre_tasks:
+    # A freshly built bastion still answers on the image default port, and a
+    # configured one answers only on the port from the configuration. Probing
+    # from the controller before the first connection is what makes the same
+    # command work in both cases, rather than an environment variable the
+    # operator has to remember to set and then to unset.
+    - name: Look for sshd on the configured port
+      become: false
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[inventory_hostname].ansible_host }}"
+        port: "{{ bastion_ssh_port }}"
+        state: started
+        connect_timeout: 5
+        timeout: 5
+      register: bastion_configured_port
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Connect on the image default port until the bastion is moved
+      ansible.builtin.set_fact:
+        ansible_port: 22
+      when:
+        - bastion_connect_override | length == 0
+        - bastion_configured_port is failed
+
   roles:
     - role: oilscope.platform.bastion
   post_tasks:

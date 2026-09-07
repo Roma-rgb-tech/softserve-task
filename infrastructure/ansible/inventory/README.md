@@ -143,8 +143,11 @@ name. Also set: `public_ip`, `oilscope_role`, `oilscope_cloud`, `ansible_host`,
 `ansible_port`. `oilscope_cloud` is what the `resolve_secrets` role branches on
 to reach Secret Manager or Secrets Manager.
 For the bastion, `bastion_ssh_port` is always the final port from
-`vms.bastion.ssh_port`. `ansible_port` normally uses that value, but can use
-`OILSCOPE_BASTION_CONNECT_PORT` during the one-time bootstrap connection.
+`vms.bastion.ssh_port`, and `ansible_port` uses it. A bastion that has not been
+configured yet still answers on the image default port instead, which
+`bootstrap_bastion.yml` works out for itself by probing the configured port
+before the first connection. `OILSCOPE_BASTION_CONNECT_PORT` forces a port and
+is an escape hatch rather than a routine step.
 
 Raw instance fields are prefixed — `gcp_` on GCP, `aws_` on AWS — because
 `name` and `tags` collide with names Ansible reserves. `aws_ec2` spells that
@@ -171,9 +174,28 @@ path on every inventory, ad-hoc and playbook command.
 The non-default port belongs to the bastion alone; applying it globally would
 break every workload connection.
 
+### Host keys
+
+Connections use a `known_hosts` file of this project's own —
+`~/.ssh/known_hosts.oilscope`, or `OILSCOPE_KNOWN_HOSTS`. These hosts keep
+static private addresses across rebuilds while their host keys do not, so in
+the personal `known_hosts` every rebuild leaves an entry that fails the next
+run with `REMOTE HOST IDENTIFICATION HAS CHANGED`. A separate file can be
+deleted whole, along with the environment it described:
+
+```sh
+terraform -chdir=infrastructure/terraform destroy \
+  -var=project_config_path=/absolute/path/project-config.json
+rm -f ~/.ssh/known_hosts.oilscope
+```
+
+### Bootstrapping the bastion
+
 Terraform does not configure `sshd`. A newly created bastion therefore starts
-on port 22, and Ansible changes it to the final configured port. Use this
-bootstrap sequence whenever the bastion has not yet been configured.
+on port 22, and Ansible changes it to the final configured port.
+`bootstrap_bastion.yml` detects which of the two is listening, so the same
+command works before and after — the sequence below is what it does, and what
+to fall back to if the probe ever has to be overridden.
 
 1. Apply Terraform with the temporary port-22 rule enabled. The rule is
    restricted to `vms.bastion.allowed_cidrs`, targets only the bastion, and is

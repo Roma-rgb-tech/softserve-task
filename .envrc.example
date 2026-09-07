@@ -1,0 +1,25 @@
+# Copy to .envrc (git-ignored) and let direnv load it on entering the
+# repository, or source it by hand.
+#
+# No secret is written here - only the way to fetch one. The values live in the
+# operating system's own credential store, so they are not on disk in the clear,
+# not in the shell history, and not one stray `git add -A` away from the remote.
+#
+# Store them once:
+#   security add-generic-password -s oilscope-ghcr        -a "$USER" -w
+#   security add-generic-password -s oilscope-oilpriceapi -a "$USER" -w
+#
+# On Linux the equivalent is `secret-tool store` / `secret-tool lookup`.
+
+# Run the collection straight out of the working tree. Without this every edit
+# to a role needs `ansible-galaxy collection install --force` before it takes
+# effect, and a run silently uses the last installed copy until it does.
+export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
+
+export OILSCOPE_PROJECT_CONFIG="$HOME/configs/oilscope/dev.json"
+export OILSCOPE_SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Only a brand new environment needs these: once the containers hold a value,
+# the deployment leaves them alone and asks for nothing.
+export GHCR_TOKEN="$(security find-generic-password -s oilscope-ghcr -w 2>/dev/null)"
+export OILPRICEAPI_KEY="$(security find-generic-password -s oilscope-oilpriceapi -w 2>/dev/null)"

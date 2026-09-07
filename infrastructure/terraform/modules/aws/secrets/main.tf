@@ -14,7 +14,12 @@ resource "aws_secretsmanager_secret" "this" {
   description = "Managed by Terraform from the project configuration"
   tags        = local.tags
 
-  recovery_window_in_days = 7
+  # Secrets Manager keeps a deleted secret for a recovery window and holds its
+  # name reserved for the whole of it, so a destroyed environment cannot be
+  # rebuilt under the same names until it expires. That is the right trade for
+  # production and the wrong one for an environment that exists to be torn down,
+  # so the window is only kept where losing a value would actually matter.
+  recovery_window_in_days = var.config.environment == "prod" ? 30 : 0
 }
 
 data "aws_iam_policy_document" "workload_secret_access" {
@@ -43,8 +48,11 @@ data "aws_iam_policy_document" "version_adder" {
   for_each = toset(length(local.managers) > 0 ? local.secret_ids : [])
 
   statement {
-    effect  = "Allow"
-    actions = ["secretsmanager:PutSecretValue"]
+    effect = "Allow"
+    actions = [
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:ListSecretVersionIds",
+    ]
 
     principals {
       type        = "AWS"

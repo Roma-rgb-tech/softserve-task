@@ -4,6 +4,7 @@
   ansible.builtin.set_fact:
     secret_versions_targets: >-
       {{ secret_versions_catalog | selectattr('clouds', 'contains', 'gcp') | list }}
+    secret_versions_present: []
 
 - name: Resolve the target project
   ansible.builtin.set_fact:
@@ -19,6 +20,8 @@
       or gcp.project_id in the project configuration.
   when: secret_versions_project | length == 0
 
+# secretVersionAdder allows adding a version without reading the metadata, so a
+# permission error is not proof that the container is missing.
 - name: Look for the containers
   ansible.builtin.command:
     argv:
@@ -36,8 +39,75 @@
   failed_when: false
   check_mode: false
 
-# secretVersionAdder allows adding a version without reading the metadata, so a
-# permission error is not proof that the container is missing.
+# Every container nobody supplied a value for is asked what it already holds.
+# A container that is already filled is left alone whether the value was
+# generated or uploaded: re-running the deployment is not a reason to rotate a
+# credential the running services are using.
+- name: Look for values the containers already hold
+  ansible.builtin.command:
+    argv:
+      - "{{ secret_versions_gcloud }}"
+      - secrets
+      - versions
+      - list
+      - "{{ item.secret_id }}"
+      - "--project={{ secret_versions_project }}"
+      - --filter=state:ENABLED
+      - --limit=1
+      - "--format=value(name)"
+  loop: >-
+    {{ secret_versions_targets
+       | rejectattr('secret_id', 'in', secret_versions_supplied | default([]))
+       | list }}
+  loop_control:
+    label: "{{ item.secret_id }}"
+  register: secret_versions_existing
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Note the containers that are already filled
+  ansible.builtin.set_fact:
+    secret_versions_present: >-
+      {{ secret_versions_present
+         + ([item.item.secret_id]
+            if item.rc == 0 and (item.stdout | default('') | trim) | length > 0
+            else []) }}
+  loop: "{{ secret_versions_existing.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.secret_id }}"
+
+# Nothing has been written yet, and this is the last moment that is still true.
+# A container with no value in the environment, nothing stored, and no place on
+# the generated list has no value available from anywhere - and a run that
+# discovers that halfway through leaves some workloads rotated and some not.
+- name: Refuse to upload incomplete secret versions
+  ansible.builtin.fail:
+    msg: >-
+      No value available for
+      {{ secret_versions_unavailable | map(attribute='variable') | join(', ') }}:
+      the environment holds none, the container is empty, and it is not listed
+      in generated_secrets.
+  vars:
+    secret_versions_unavailable: >-
+      {{ secret_versions_targets
+         | rejectattr('secret_id', 'in', secret_versions_supplied | default([]))
+         | rejectattr('secret_id', 'in', secret_versions_present)
+         | rejectattr('generated')
+         | list }}
+  when: secret_versions_unavailable | length > 0
+
+- name: Choose the containers that get a new version
+  ansible.builtin.set_fact:
+    secret_versions_writes: >-
+      {{ secret_versions_targets
+         | rejectattr('secret_id', 'in', secret_versions_present) | list }}
+
+- name: Report the containers that are left alone
+  ansible.builtin.debug:
+    msg: "{{ item }} already holds a value in gcp, leaving it alone"
+  loop: "{{ secret_versions_present }}"
+
 # --data-file=- takes the payload from stdin, so it never becomes a command
 # argument and cannot appear in ps output or a shell history. no_log keeps it
 # out of the Ansible output and any callback log, and stdin_add_newline is off
@@ -53,9 +123,11 @@
       - "--project={{ secret_versions_project }}"
       - "--data-file=-"
       - "--format=value(name)"
-    stdin: "{{ lookup('ansible.builtin.env', item.variable) }}"
+    stdin: >-
+      {{ lookup('ansible.builtin.env', item.variable)
+         | default(secret_versions_invented[item.secret_id] | default(''), true) }}
     stdin_add_newline: false
-  loop: "{{ secret_versions_targets }}"
+  loop: "{{ secret_versions_writes }}"
   loop_control:
     label: "{{ item.secret_id }}"
   register: secret_versions_added
@@ -68,7 +140,9 @@
 - name: Report the new versions
   ansible.builtin.debug:
     msg: >-
-      {{ item.item.secret_id }} <- ${{ item.item.variable }}
+      {{ item.item.secret_id }} <- {{ 'a generated value'
+      if item.item.secret_id in (secret_versions_invented | default({}) | list)
+      else '$' ~ item.item.variable }}
       (gcp version {{ item.stdout | trim | regex_replace('^.*/', '') }})
   loop: "{{ secret_versions_added.results | default([]) }}"
   loop_control:

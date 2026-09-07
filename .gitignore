@@ -42,3 +42,11 @@ infrastructure/ansible/inventory/oilscope.gcp.yml
 
 # Local backups of tfvars
 *.tfvars.bak
+
+# Local environment: paths and credential-store lookups, never values.
+.envrc
+
+# Collection path for local runs. Only the symlink to this repository's own
+# collection belongs in git; anything Galaxy installs beside it does not.
+.ansible/collections/ansible_collections/*
+!.ansible/collections/ansible_collections/oilscope

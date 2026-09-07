@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+- name: Refuse to run without the project configuration
+  ansible.builtin.fail:
+    msg: >-
+      secret_versions_config_file is empty. Pass the project configuration -
+      the same file Terraform reads - so the containers to fill are known.
+  when: secret_versions_config_file | length == 0
+
 - name: Read the project configuration
   ansible.builtin.set_fact:
     secret_versions_config: >-
@@ -40,6 +47,9 @@
       {{ secret_versions_pairs | map(attribute='0') | unique | sort | list }}
     secret_versions_prefix: >-
       {{ secret_versions_config.name_prefix }}-{{ secret_versions_config.environment }}-
+    secret_versions_generated_ids: >-
+      {{ (secret_versions_config.generated_secrets | default([]))
+         + secret_versions_generate }}
 
 - name: Prepare the short and the fully qualified variable names
   ansible.builtin.set_fact:
@@ -69,6 +79,8 @@
       {{ secret_versions_catalog | default([]) + [{
            'secret_id': secret_versions_entry.0,
            'variable': secret_versions_entry.1,
+           'generated': secret_versions_entry.0 in secret_versions_generated_ids
+                        or secret_versions_entry.1 in secret_versions_generated_ids,
            'read_by': secret_versions_pairs
                       | selectattr('0', 'eq', secret_versions_entry.0)
                       | map(attribute='1') | sort | list,
@@ -95,37 +107,53 @@
             | list) }}
   when: secret_versions_only | length > 0
 
-
 - name: Show which variable feeds which container
   ansible.builtin.debug:
     msg: >-
       {{ item.variable }} -> {{ item.secret_id }}
       in {{ item.clouds | join(', ') }}
-      (read by {{ item.read_by | join(', ') }})
+      (read by {{ item.read_by | join(', ') }}){{ ', generated when unset'
+      if item.generated else '' }}
   loop: "{{ secret_versions_catalog }}"
   loop_control:
     label: "{{ item.secret_id }}"
 
-# Everything is checked before anything is written. A value that turns out to
-# be missing halfway through leaves some workloads on the new credential and
-# some on the old one, which is worse than not having started.
-- name: Find values that are not in the environment
+# A value in the environment is an instruction to write it, whatever the
+# container currently holds - that is what a rotation is. Everything else is
+# decided against the cloud, once the containers have been asked what they
+# already have, so a routine run needs nothing exported at all.
+- name: Note which containers the environment supplies a value for
   ansible.builtin.set_fact:
-    secret_versions_absent: >-
-      {{ secret_versions_absent | default([])
-         + ([item.variable]
-            if lookup('ansible.builtin.env', item.variable) | length == 0
+    secret_versions_supplied: >-
+      {{ secret_versions_supplied | default([])
+         + ([item.secret_id]
+            if lookup('ansible.builtin.env', item.variable) | length > 0
             else []) }}
   loop: "{{ secret_versions_catalog }}"
   loop_control:
     label: "{{ item.variable }}"
 
-- name: Refuse to upload incomplete secret versions
-  ansible.builtin.fail:
-    msg: >-
-      Required secret source variables are missing or empty:
-      {{ secret_versions_absent | join(', ') }}
-  when: secret_versions_absent | default([]) | length > 0
+# The value is made here rather than in Terraform on purpose: random_password
+# writes its result into the state file, and the state is not a place for a
+# payload. Made here it exists only in the memory of this play, and leaves it
+# on stdin of the provider CLI.
+#
+# The alphabet is deliberately alphanumeric. A punctuation character is fine
+# for a secret and not fine for a value that is concatenated into a URL by
+# something downstream - a slash in a password once turned a database DSN into
+# a different host.
+- name: Invent a value for every generated container left unset
+  ansible.builtin.set_fact:
+    secret_versions_invented: >-
+      {{ secret_versions_invented | default({}) | combine({
+           item.secret_id: lookup('ansible.builtin.password',
+                                  '/dev/null length=40 chars=ascii_letters,digits')
+         }) }}
+  loop: "{{ secret_versions_catalog | selectattr('generated') | list }}"
+  loop_control:
+    label: "{{ item.secret_id }}"
+  when: lookup('ansible.builtin.env', item.variable) | length == 0
+  no_log: true
 
 - name: Add the versions in every cloud that holds a container
   ansible.builtin.include_tasks: "{{ secret_versions_cloud }}.yml"

@@ -1,6 +1,7 @@
 # Secrets
 
-Deployment credentials live in Google Secret Manager. Terraform creates the
+Deployment credentials live in the secret store of the cloud the workload runs
+in — Google Secret Manager or AWS Secrets Manager. Terraform creates the
 containers and decides who may read them; it never sees, stores or transports a
 value.
 
@@ -14,18 +15,21 @@ There is no hand-written list of secrets. Every container is derived from
   "history": {
     "role": "history",
     "secret_mappings": {
-      "DB_PASSWORD_HISTORY": "oilscope-dev-db-password-history"
+      "POSTGRES_PASSWORD": "oilscope-dev-db-password",
+      "GHCR_TOKEN": "oilscope-dev-ghcr-token"
     }
   }
 }
 ```
 
 The key is the environment variable the application expects; the value is the
-Secret Manager container ID. Both halves are non-secret, which is why the whole
+container ID in the cloud's secret store. Both halves are non-secret, which is why the whole
 mapping can live in a file the repository reads.
 
-`infrastructure/terraform/secrets.tf` flattens those maps into the set of
-containers to create, and into the list of (workload, secret) pairs to grant.
+`modules/gcp/secrets` and `modules/aws/secrets` flatten those maps into the set
+of containers to create, and into the list of (workload, secret) pairs to
+grant. Each one only looks at the VMs targeting its own cloud, so a container
+read from both clouds is created on both sides.
 Giving a workload a new secret is a one-line change to that JSON — the
 container, the grant and the environment-variable name all follow from it.
 
@@ -39,6 +43,7 @@ only be granted a secret that is written next to its own name.
 | creates | `google_secret_manager_secret` — the container, automatic replication, project labels |
 | creates | `google_secret_manager_secret_iam_member` — one `roles/secretmanager.secretAccessor` binding per (workload, secret) pair |
 | creates | `google_secret_manager_secret_iam_member` — one `roles/secretmanager.secretVersionAdder` binding per configured version manager |
+| creates | `google_secret_manager_secret_iam_member` — one `roles/secretmanager.viewer` binding per configured version manager, so the deployment can tell an empty container from a filled one without being able to read either |
 | never creates | `google_secret_manager_secret_version` — the payload |
 
 The last row is the whole point. A secret value passed into Terraform ends up in
@@ -62,8 +67,8 @@ terraform output workload_secret_access
 
 ```
 {
-  "fetcher" = ["oilscope-dev-db-password-fetcher", "oilscope-dev-oilpriceapi-key"]
-  "history" = ["oilscope-dev-db-password-history"]
+  "fetcher" = ["oilscope-dev-db-password", "oilscope-dev-ghcr-token", "oilscope-dev-oilpriceapi-key"]
+  "history" = ["oilscope-dev-db-password", "oilscope-dev-ghcr-token"]
   ...
 }
 ```
@@ -84,9 +89,17 @@ Values are written with `gcloud`, from a pipe, never from a command-line
 argument — arguments are visible in `ps` output and land in shell history:
 
 ```bash
-printf '%s' "${DB_PASSWORD_HISTORY}" \
-  | gcloud secrets versions add oilscope-dev-db-password-history \
+printf '%s' "${POSTGRES_PASSWORD}" \
+  | gcloud secrets versions add oilscope-dev-db-password \
       --project="${GOOGLE_PROJECT}" --data-file=-
+```
+
+The AWS equivalent reads the payload from stdin the same way:
+
+```bash
+printf '%s' "${POSTGRES_PASSWORD}" \
+  | aws secretsmanager put-secret-value --secret-id oilscope-dev-db-password \
+      --secret-string file:///dev/stdin
 ```
 
 Note `printf` rather than `echo`: `echo` appends a newline, which becomes part of
@@ -95,7 +108,7 @@ the stored value and then fails an exact comparison somewhere far away from here
 Which environment variable the *application* reads is not a convention to
 remember: it is the key side of `secret_mappings`. It is scoped to one VM
 though, so it is not the variable you export when uploading — see
-[Uploading every value at once](#uploading-every-value-at-once).
+[Filling the containers](#filling-the-containers).
 
 Generate database passwords with `openssl rand -hex 32`. `-hex` rather than
 `-base64`, because base64 contains `+` and `/`, which have to be percent-encoded
@@ -121,19 +134,39 @@ do, and they hold only `secretAccessor`, only on their own secrets.
 Leave the list empty and nobody but a project owner can upload a value, which is
 a reasonable default: it fails closed.
 
-## Uploading every value at once
+## Filling the containers
 
 Doing that by hand for every secret is where a value eventually ends up in the
 wrong place. The `oilscope.platform.secret_versions` role does the whole
-catalog in one pass, taking each value from the environment of the operator who
-runs it. It targets `localhost`: this is an operator task against the Google
-API, not host configuration.
+catalog in one pass. It targets `localhost`: this is an operator task against a
+cloud API, not host configuration.
+
+A container gets its value from one of two places. Credentials that exist
+outside the deployment — the registry token, the price API key — come from the
+environment of the operator who runs the play. Credentials that exist only
+because the deployment exists — the database password — are listed in
+`generated_secrets` and the role makes them up:
+
+```json
+"generated_secrets": ["oilscope-dev-db-password"]
+```
+
+The role asks the provider what each container already holds, and writes only
+where writing is the point:
+
+| environment | container | what happens |
+| --- | --- | --- |
+| holds a value | anything | uploaded - an explicit value is a rotation and always wins |
+| empty | already filled | left alone; re-running a deployment is not a reason to rotate a live credential |
+| empty | empty, on the generated list | a 40-character alphanumeric value is generated and uploaded |
+| empty | empty, not on the list | the play fails, naming the variable, before anything is written |
+
+The second row is why a routine run needs nothing exported at all. Only a brand
+new environment — or a deliberate rotation — asks for a value, and only for the
+credentials that came from somewhere else:
 
 ```bash
- export DB_PASSWORD_ADMIN="$(openssl rand -hex 32)"
- export DB_PASSWORD_FETCHER="$(openssl rand -hex 32)"
- export DB_PASSWORD_HISTORY="$(openssl rand -hex 32)"
- export DB_PASSWORD_UI="$(openssl rand -hex 32)"
+ export GHCR_TOKEN="..."
  export OILPRICEAPI_KEY="..."
 
 ansible-playbook oilscope.platform.upload_secret_versions \
@@ -145,7 +178,23 @@ ansible-playbook oilscope.platform.upload_secret_versions \
 
 The leading space keeps the export out of the shell history, in a shell
 configured to honour it. `--check` runs every check and uploads nothing; the
-role prints which variable feeds which container before it writes anything.
+role prints which variable feeds which container, and which containers it is
+allowed to generate, before it writes anything.
+
+`oilscope.platform.site` runs this play first and then the deployment, taking
+the path from `project_config_path` — see
+[multi-cloud.md](multi-cloud.md#running-the-deployment).
+
+### Why the value is not generated in Terraform
+
+`random_password` would put the payload into the plan and the state file, which
+is exactly what the rest of this document is about avoiding. Generating it in
+Ansible keeps it in the memory of one play, on its way to the provider's stdin.
+
+The alphabet is alphanumeric on purpose. Punctuation is fine in a secret and
+not fine in a value something downstream concatenates into a URL: a `/` in a
+password turns `postgres://user:pa/ss@host/db` into a request for a different
+host, and the error surfaces three layers away from the cause.
 
 ### Why the variable is not the one the application sees
 
@@ -154,22 +203,21 @@ container ID with the project prefix dropped — not from the key side of
 `secret_mappings`:
 
 ```
-oilscope-dev-db-password-fetcher   ->  DB_PASSWORD_FETCHER
-oilscope-dev-oilpriceapi-key       ->  OILPRICEAPI_KEY
+oilscope-dev-db-password     ->  DB_PASSWORD
+oilscope-dev-oilpriceapi-key ->  OILPRICEAPI_KEY
 ```
 
-That key is scoped to one VM: `DB_PASSWORD` means the fetcher's password on
-`fetcher` and the history service's password on `history`, and one shell cannot
-hold both under one name. Where dropping the prefix would make two containers
-collide, every container keeps the fully qualified name
-(`OILSCOPE_DEV_DB_PASSWORD_FETCHER`) instead.
+That key is scoped to one VM: the same `DB_PASSWORD` key can point at a
+different container on two workloads, and one shell cannot hold both under one
+name. Where dropping the prefix would make two containers collide, every
+container keeps the fully qualified name (`OILSCOPE_DEV_DB_PASSWORD`) instead.
 
 ### What it guarantees
 
 | | |
 | --- | --- |
-| reads values from | the environment of the process, and nowhere else |
-| passes the payload to gcloud | on stdin, through `--data-file=-` |
+| reads values from | the environment of the process, or generates them in memory |
+| passes the payload to the provider | on stdin, `--data-file=-` or `--secret-string file:///dev/stdin` |
 | writes to disk | nothing |
 | prints | container IDs and variable names, never a value |
 
@@ -178,25 +226,26 @@ missing one fails the play with the full list, before anything is written.
 Half-rotated is the state that costs an evening — one service on the new
 password, three on the old.
 
-The upload task carries `no_log`, so the payload stays out of the Ansible output
-and any callback log at every verbosity, and `stdin_add_newline` is off because
-a trailing newline would become part of the stored value. The task is also
-skipped explicitly in check mode rather than being left to the module: a
-check-mode skip result carries the module arguments, and `-vvv` prints those
-uncensored.
+The upload and generation tasks carry `no_log`, so the payload stays out of the
+Ansible output and any callback log at every verbosity, and `stdin_add_newline`
+is off because a trailing newline would become part of the stored value. The
+upload task is also skipped explicitly in check mode rather than being left to
+the module: a check-mode skip result carries the module arguments, and `-vvv`
+prints those uncensored.
 
-Rotating a single credential:
+Rotating a single credential, generated or not:
 
 ```bash
- export DB_PASSWORD_UI="$(openssl rand -hex 32)"
+ export DB_PASSWORD="$(openssl rand -hex 32)"
 
 ansible-playbook oilscope.platform.upload_secret_versions \
   -e secret_versions_config_file=~/configs/oilscope/dev.json \
-  -e '{"secret_versions_only": ["DB_PASSWORD_UI"]}'
+  -e '{"secret_versions_only": ["DB_PASSWORD"]}'
 ```
 
-Adding a version requires `roles/secretmanager.secretVersionAdder`, so whoever
-runs this does not need to be able to read what is already stored.
+Adding a version requires `roles/secretmanager.secretVersionAdder` on GCP and
+`secretsmanager:PutSecretValue` on AWS, so whoever runs this does not need to
+be able to read what is already stored.
 
 ## Rotation
 
@@ -233,3 +282,22 @@ see the README and [security-scanning.md](security-scanning.md).
 is no undo, and the values are not in state to be recovered from. Before
 destroying a project that anyone else relies on, confirm the values exist
 somewhere else first.
+
+AWS makes this sharper than GCP. Secrets Manager does not delete a secret
+immediately: it schedules the deletion and keeps the *name* reserved for the
+whole recovery window, so the next `terraform apply` fails with `a secret with
+this name is already scheduled for deletion` until the window expires. The
+module therefore sets the window to 30 days only for `prod` and to zero
+everywhere else — an environment that exists to be torn down and rebuilt should
+not be blocked for a week by its own teardown.
+
+If a secret is already stuck in that state, either wait, or purge it and
+recreate:
+
+```bash
+aws secretsmanager delete-secret --secret-id SECRET_ID \
+  --force-delete-without-recovery
+```
+
+That is irreversible, which is the point: it is the escape hatch for an
+environment whose values can simply be uploaded again.

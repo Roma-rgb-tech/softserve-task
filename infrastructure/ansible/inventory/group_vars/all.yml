@@ -9,7 +9,18 @@ ansible_ssh_private_key_file: >-
      | default(lookup('ansible.builtin.env', 'HOME')
                ~ '/.ssh/google_compute_engine', true) }}
 
+# These hosts are rebuilt often and keep the same private addresses, so their
+# host keys change while their names do not. Kept in the personal known_hosts
+# that would poison every later run with REMOTE HOST IDENTIFICATION HAS CHANGED,
+# and clearing it by hand risks taking unrelated entries with it. A file of this
+# project's own can simply be deleted along with the environment it describes.
+oilscope_known_hosts: >-
+  {{ lookup('ansible.builtin.env', 'OILSCOPE_KNOWN_HOSTS')
+     | default(lookup('ansible.builtin.env', 'HOME')
+               ~ '/.ssh/known_hosts.oilscope', true) }}
+
 oilscope_ssh_base_args: >-
   -o StrictHostKeyChecking=accept-new
   -o IdentitiesOnly=yes
+  -o UserKnownHostsFile={{ oilscope_known_hosts }}
 ansible_ssh_common_args: "{{ oilscope_ssh_base_args }}"
