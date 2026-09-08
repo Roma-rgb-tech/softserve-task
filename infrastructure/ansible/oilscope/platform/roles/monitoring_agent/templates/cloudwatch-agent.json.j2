@@ -38,7 +38,7 @@
           {
             "file_path": "{{ monitoring_agent_container_logs }}",
             "log_group_name": "{{ monitoring_agent_log_group }}",
-            "log_stream_name": "{instance_id}",
+            "log_stream_name": "{{ inventory_hostname }}",
             "timezone": "UTC"
           }
         ]
