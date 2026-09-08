@@ -6,9 +6,6 @@
     name: google-cloud-ops-agent
     state: restarted
 
-# The agent does not read the JSON file directly: fetch-config translates it
-# into the internal format and restarts the collector, which is why this is a
-# command rather than a service restart.
 - name: Load the CloudWatch agent configuration
   become: true
   ansible.builtin.command:

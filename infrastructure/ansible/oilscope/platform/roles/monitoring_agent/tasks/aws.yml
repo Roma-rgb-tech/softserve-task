@@ -24,8 +24,6 @@
     mode: "0644"
   notify: Load the CloudWatch agent configuration
 
-# fetch-config both loads the file and starts the collector, so the first run
-# needs no separate start. Afterwards systemd keeps it up across reboots.
 - name: Apply a pending configuration change
   ansible.builtin.meta: flush_handlers
 

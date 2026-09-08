@@ -9,8 +9,6 @@
     group: root
     mode: "0755"
 
-# The installer adds Google's apt repository and pulls the agent from it. The
-# creates guard is the agent's own install prefix, so a second run does nothing.
 - name: Install the Ops Agent
   become: true
   ansible.builtin.command:

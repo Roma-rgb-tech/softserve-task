@@ -4,8 +4,6 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    # include_role does not extend ignore_errors to the tasks it pulls in, so
-    # the failure has to be caught by a rescue rather than ignored.
     - name: Include the role without a configuration file
       block:
         - name: Include the role

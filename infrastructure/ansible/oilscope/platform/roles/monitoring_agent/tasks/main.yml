@@ -12,8 +12,6 @@
     monitoring_agent_config: >-
       {{ lookup('ansible.builtin.file', monitoring_agent_config_path) | from_json }}
 
-# Terraform creates the log group and the log-based metrics from the same two
-# values, so deriving them here rather than passing them in keeps one source.
 - name: Derive the log destination
   ansible.builtin.set_fact:
     monitoring_agent_log_group: >-
