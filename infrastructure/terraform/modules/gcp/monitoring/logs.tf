@@ -1,7 +1,3 @@
-# The Ops Agent ships every container's stdout to Cloud Logging under this log
-# ID, parsed as JSON, so the application line sits in jsonPayload.log. The
-# regex matches the status code an HTTP server writes after the request line,
-# which is what a 5xx looks like in an access log of any of these services.
 resource "google_logging_metric" "http_errors" {
   count = local.enabled
 
@@ -38,8 +34,8 @@ resource "google_monitoring_alert_policy" "http_errors" {
 
     condition_threshold {
       filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.http_errors[0].name}\" AND resource.type=\"gce_instance\""
-      comparison      = "COMPARISON_GE"
-      threshold_value = local.errors
+      comparison      = "COMPARISON_GT"
+      threshold_value = local.errors - 1
       duration        = "0s"
 
       aggregations {

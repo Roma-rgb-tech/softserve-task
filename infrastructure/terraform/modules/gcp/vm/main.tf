@@ -1,4 +1,3 @@
-#trivy:ignore:AVD-GCP-0031[assign_public_ip=true]
 resource "google_compute_instance" "workload" {
   for_each = local.vms
 

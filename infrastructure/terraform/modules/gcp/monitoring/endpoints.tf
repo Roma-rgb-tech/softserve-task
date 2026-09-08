@@ -1,11 +1,4 @@
 locals {
-  # A VM with a public_endpoint is one the outside world is meant to reach, so
-  # it is the one worth checking from outside. The port comes from the same
-  # list the firewall opens, so the check cannot drift away from the rule.
-  #
-  # The address itself is only known after apply, so it stays out of this
-  # condition: for_each needs keys it can work out during the plan, and a VM
-  # carrying a public endpoint is asking for an address by definition.
   endpoints = {
     for name, vm in var.config.vms : name => tostring(sort(var.config.network.ui_public_ports)[0])
     if lookup(vm, "cloud", local.default) == local.cloud
@@ -14,9 +7,6 @@ locals {
   }
 }
 
-# A TCP check rather than an HTTPS one on purpose: the certificate is issued to
-# the endpoint hostname, and the probes call the address. A TLS failure here
-# would say nothing about whether the service is up.
 resource "google_monitoring_uptime_check_config" "endpoint" {
   for_each = local.enabled == 1 ? local.endpoints : {}
 

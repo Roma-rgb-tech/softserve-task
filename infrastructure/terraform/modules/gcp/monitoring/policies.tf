@@ -1,9 +1,3 @@
-# Only the two guest metrics need the Ops Agent. CPU is reported by the
-# hypervisor, so it keeps alerting even on a host where the agent died.
-#
-# memory/percent_used and disk/percent_used both carry a state label and report
-# every state separately, so without the extra clause the alert would fire on
-# free space as happily as on used space.
 locals {
   policies = {
     cpu = {
@@ -33,12 +27,13 @@ locals {
     disk = {
       display   = "Disk above ${local.disk}% for five minutes"
       metric    = "agent.googleapis.com/disk/percent_used"
-      extra     = " AND metric.labels.state=\"used\""
+      extra     = local.used_disk
       threshold = local.disk
       documentation = join(" ", [
         "A filesystem on a VM is filling up.",
         "Container images and logs are what usually fill it:",
         "docker system prune buys time, a bigger boot disk fixes it.",
+        "Snap loop devices are excluded: they are read-only and always full.",
       ])
     }
   }

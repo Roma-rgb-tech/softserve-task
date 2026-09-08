@@ -1,6 +1,3 @@
-# Terraform owns the log group so retention is set from the start. Left to the
-# agent it would be created on first write and kept forever, which is both a
-# bill and a pile of application output nobody agreed to store.
 resource "aws_cloudwatch_log_group" "docker" {
   count = local.enabled
 
@@ -9,9 +6,6 @@ resource "aws_cloudwatch_log_group" "docker" {
   tags              = local.tags
 }
 
-# The agent ships every container's stdout, which the Docker json driver wraps
-# one JSON object per line. The pattern matches the status code an HTTP server
-# writes after the request line, inside that escaped payload.
 resource "aws_cloudwatch_log_metric_filter" "http_errors" {
   count = local.enabled
 

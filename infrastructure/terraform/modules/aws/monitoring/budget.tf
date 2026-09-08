@@ -1,6 +1,3 @@
-# AWS Budgets mails the addresses directly rather than through SNS, so a budget
-# alert arrives without anyone confirming a subscription first. The same list
-# feeds both, so there is one place to change a recipient.
 resource "aws_budgets_budget" "monthly" {
   count = local.enabled == 1 && length(local.budget) > 0 ? 1 : 0
 

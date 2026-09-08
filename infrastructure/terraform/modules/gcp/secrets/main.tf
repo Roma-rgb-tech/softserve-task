@@ -26,10 +26,6 @@ resource "google_secret_manager_secret_iam_member" "workload_access" {
   member    = "serviceAccount:${var.runtime_identities[each.value.vm_name]}"
 }
 
-# Listing versions is what lets the deployment tell an empty container from a
-# filled one and leave a live credential alone. viewer carries the metadata
-# permissions and not secretmanager.versions.access, so it still cannot read a
-# value.
 resource "google_secret_manager_secret_iam_member" "version_viewer" {
   for_each = local.version_writers
 

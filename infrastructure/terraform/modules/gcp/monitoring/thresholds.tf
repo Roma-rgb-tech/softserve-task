@@ -8,6 +8,10 @@ locals {
   disk   = lookup(local.settings, "disk_percent", 85)
   errors = lookup(local.settings, "error_log_threshold", 5)
 
+
+  real_disks = "metric.labels.device!=monitoring.regex.full_match(\"/dev/loop.*\")"
+  used_disk  = " AND metric.labels.state=\"used\" AND ${local.real_disks}"
+
   budget          = lookup(local.settings, "budget", {})
   billing_account = lookup(lookup(var.config, "gcp", {}), "billing_account", "")
 }

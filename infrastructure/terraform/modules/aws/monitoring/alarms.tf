@@ -1,6 +1,3 @@
-# CPU comes from the hypervisor, so it keeps alarming on a host where the agent
-# died. Memory and disk are published by the CloudWatch agent into the CWAgent
-# namespace - EC2 reports nothing about the inside of the guest.
 locals {
   metrics = {
     cpu = {
@@ -55,10 +52,6 @@ resource "aws_cloudwatch_metric_alarm" "threshold" {
   tags          = merge(local.tags, { Name = "${local.prefix}-${each.value.vm}-${each.value.metric}" })
 }
 
-# Availability. StatusCheckFailed covers both checks EC2 runs - the hypervisor
-# reaching the instance, and the instance reaching the network. Missing data is
-# treated as breaching on purpose: an instance that has stopped publishing has
-# not become healthy.
 resource "aws_cloudwatch_metric_alarm" "availability" {
   for_each = local.enabled == 1 ? var.instance_ids : {}
 

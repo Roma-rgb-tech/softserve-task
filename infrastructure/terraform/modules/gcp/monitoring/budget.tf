@@ -1,7 +1,3 @@
-# A budget belongs to the billing account, not to the project, and the filter
-# wants the project number rather than its ID. Without a billing_account in the
-# configuration no budget is created: the credentials that build the project
-# usually cannot see the billing account at all.
 data "google_project" "current" {
   count = local.enabled == 1 && local.billing_account != "" && length(local.budget) > 0 ? 1 : 0
 
@@ -36,9 +32,7 @@ resource "google_billing_budget" "monthly" {
     }
   }
 
-  # The default recipients are whoever holds billing roles on the account.
-  # Turning them off keeps the budget mail going to the same addresses as every
-  # other alert, so there is one list to maintain rather than two.
+
   all_updates_rule {
     monitoring_notification_channels = local.channels
     disable_default_iam_recipients   = true

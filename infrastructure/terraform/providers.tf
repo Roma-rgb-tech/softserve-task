@@ -1,5 +1,9 @@
+# Only the budget needs this: it belongs to the billing account, so the request
+# carries no project for Google to bill the API quota to and is refused.
 provider "google" {
-  project = lookup(lookup(local.config, "gcp", {}), "project_id", null)
+  project               = lookup(lookup(local.config, "gcp", {}), "project_id", null)
+  billing_project       = lookup(lookup(local.config, "gcp", {}), "project_id", null)
+  user_project_override = true
 }
 
 provider "aws" {

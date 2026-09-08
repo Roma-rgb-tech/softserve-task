@@ -29,9 +29,6 @@ resource "google_monitoring_alert_policy" "threshold" {
   }
 }
 
-# Availability is the absence of a signal rather than a bad value. Compute
-# Engine reports instance/uptime for a running VM and nothing at all for one
-# that is stopped, crashed or unreachable, so a missing series is the alert.
 resource "google_monitoring_alert_policy" "availability" {
   count = local.enabled
 

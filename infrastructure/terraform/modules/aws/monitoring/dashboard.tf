@@ -1,7 +1,4 @@
 locals {
-  # Every panel is the metric its alarm watches, with the same statistic. The
-  # dashboard opened after an alarm then shows the series that fired rather
-  # than a differently shaped view of it.
   panels = [
     { title = "CPU utilisation, %", namespace = "AWS/EC2", metric = "CPUUtilization", stat = "Average" },
     { title = "Memory used, %", namespace = "CWAgent", metric = "mem_used_percent", stat = "Average" },

@@ -1,6 +1,3 @@
-# Every alarm publishes here and the topic fans out to the addresses. AWS sends
-# each address a confirmation link first and delivers nothing until it is
-# clicked, so a fresh environment has one manual step GCP does not.
 resource "aws_sns_topic" "alerts" {
   count = local.enabled
 
