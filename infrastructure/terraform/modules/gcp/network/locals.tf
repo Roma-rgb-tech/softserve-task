@@ -4,4 +4,9 @@ locals {
   prefix  = "${var.config.name_prefix}-${var.config.environment}"
   region  = lookup(lookup(var.config.catalog.region, local.cloud, {}), lookup(var.config, "default_region", ""), null)
   count   = anytrue([for vm in var.config.vms : lookup(vm, "cloud", local.default) == local.cloud]) ? 1 : 0
+
+  managed_database = lookup(lookup(var.config, "database", {}), "managed", false)
+  database_cidrs   = lookup(var.config.network, "database_subnet_cidrs", [])
+
+  database_count = local.count == 1 && local.managed_database && length(local.database_cidrs) > 0 ? 1 : 0
 }

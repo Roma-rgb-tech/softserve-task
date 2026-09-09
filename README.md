@@ -381,6 +381,17 @@ Two honest caveats:
   alerts mailed from the same configuration on both sides. Nothing self-hosted.
   See [`docs/monitoring.md`](docs/monitoring.md).
 
+- **The database is one flag.** `database.managed` moves PostgreSQL between a
+  container on a VM and the cloud's own service - Cloud SQL or RDS - in a subnet
+  of its own, reachable only from inside the VPC. The password never reaches
+  Terraform configuration, plan or state.
+  See [`docs/managed-database.md`](docs/managed-database.md).
+
+- **Machines configure themselves at first boot.** Terraform renders one
+  cloud-init document per VM and hands it to the cloud as user data. It is what
+  formats and mounts the data disks a VM declares in `extra_disks`.
+  See [`docs/machine-storage.md`](docs/machine-storage.md).
+
 If the `gitleaks` hook fails to build on your machine, swap it for the
 container-based variant in `.pre-commit-config.yaml`:
 

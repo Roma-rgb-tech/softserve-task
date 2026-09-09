@@ -17,6 +17,14 @@ locals {
       public_subnet = vm.role == "bastion" || vm.assign_public_ip
       tags          = merge(local.tags, lookup(vm, "labels", {}), { role = vm.role })
       startup       = lookup(lookup(vm, "ci", {}), "startup_script", null)
+      commands      = lookup(lookup(vm, "ci", {}), "commands", [])
+
+      extra_disks = [
+        for index, disk in lookup(vm, "extra_disks", []) : merge(disk, {
+          disk_type   = lookup(lookup(local.catalog.disk_type, local.cloud, {}), disk.type, null)
+          device_name = "/dev/sd${substr(local.device_letters, index, 1)}"
+        })
+      ]
     })
   }
 }

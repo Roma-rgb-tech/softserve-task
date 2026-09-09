@@ -76,3 +76,8 @@ output "monitoring" {
     cloud => summary if summary.dashboard != null
   }
 }
+
+output "database" {
+  description = "Where the application's PostgreSQL lives when a cloud runs it. Host, port, database, role and the container holding that role's password - never the password. Null while the deployment runs PostgreSQL in a container on a VM of its own."
+  value       = one([for database in [module.gcp.database, module.aws.database] : database if database != null])
+}

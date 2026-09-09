@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+message_queue_runtime_environment:
+  DOCKER_CONFIG: "{{ message_queue_docker_config_dir }}"
+  RABBITMQ_USER: "{{ message_queue_user }}"
+  RABBITMQ_PASSWORD: "{{ message_queue_password }}"
+  RABBITMQ_VHOST: "{{ message_queue_vhost }}"
+  QUEUE_BIND_ADDRESS: "{{ message_queue_bind_address }}"
+  QUEUE_HOST_PORT: "{{ message_queue_host_port | string }}"
+  DATABASE_HOST: "{{ message_queue_database_host }}"
+  DATABASE_PORT: "{{ message_queue_database_port | string }}"
+  DATABASE_SSLMODE: "{{ message_queue_database_sslmode }}"
+  POSTGRES_DB: "{{ message_queue_database_name }}"
+  POSTGRES_USER: "{{ message_queue_database_user }}"
+  POSTGRES_PASSWORD: "{{ message_queue_database_password }}"

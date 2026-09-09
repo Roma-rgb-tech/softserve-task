@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Refuse to run without the project configuration
+  ansible.builtin.fail:
+    msg: >-
+      managed_database_config_file is empty. Pass the project configuration -
+      the same file Terraform reads - so the instance and the secret are known.
+  when: managed_database_config_file | length == 0
+
+- name: Read the project configuration
+  ansible.builtin.set_fact:
+    managed_database_config: >-
+      {{ lookup('ansible.builtin.file', managed_database_config_file) | from_json }}
+
+- name: Work out what was asked for
+  ansible.builtin.set_fact:
+    managed_database_settings: >-
+      {{ managed_database_config.database | default({}) }}
+    managed_database_cloud: >-
+      {{ managed_database_config.default_cloud }}
+    managed_database_instance: >-
+      {{ managed_database_config.name_prefix }}-{{ managed_database_config.environment }}-database
+
+- name: Skip the whole role while PostgreSQL runs in a container
+  ansible.builtin.debug:
+    msg: >-
+      database.managed is off, so the deployment keeps PostgreSQL in the
+      container on the VM with role database and there is nothing to reconcile.
+  when: not (managed_database_settings.managed | default(false) | bool)
+
+- name: Reconcile the credentials with the cloud that holds them
+  ansible.builtin.include_tasks: "{{ managed_database_cloud }}.yml"
+  when: managed_database_settings.managed | default(false) | bool

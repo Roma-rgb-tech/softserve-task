@@ -14,6 +14,14 @@
       vars:
         secret_versions_config_file: "{{ project_config_path }}"
 
+- name: Reconcile the managed database credentials
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: oilscope.platform.managed_database
+      vars:
+        managed_database_config_file: "{{ project_config_path }}"
+
 - name: Configure the bastion
   ansible.builtin.import_playbook: bootstrap_bastion.yml
 

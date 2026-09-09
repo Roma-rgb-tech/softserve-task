@@ -93,6 +93,17 @@
         "vpc_cidr": {
           "description": "CIDR range of the VPC. AWS requires one; GCP derives its network from the subnets and ignores this value.",
           "type": "string"
+        },
+        "database_subnet_cidrs": {
+          "description": "Ranges the managed database lives in, kept apart from the workloads. AWS spreads a DB subnet group over them and needs at least two, in different availability zones; GCP puts the Private Service Connect endpoint in the first one.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -110,6 +121,12 @@
           "maximum": 65535
         },
         "postgresql": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "amqp": {
+          "description": "Port the message broker answers on. Used only when the database is managed, because the queue then leaves PostgreSQL and becomes a broker of its own.",
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
@@ -271,6 +288,9 @@
         },
         "os": {
           "$ref": "#/$defs/catalog_table"
+        },
+        "db_size": {
+          "$ref": "#/$defs/catalog_table"
         }
       }
     },
@@ -333,6 +353,95 @@
         "gcp",
         "aws"
       ]
+    },
+    "database": {
+      "description": "Where the application's PostgreSQL lives, and with it where the queue lives. Absent, or managed set to false, keeps both in the container on the VM with role database. Managed hands PostgreSQL to the cloud - Cloud SQL or RDS - which has no PGMQ extension, so that VM runs a message broker instead and the services publish over AMQP.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "managed"
+      ],
+      "properties": {
+        "managed": {
+          "description": "True hands the database to the cloud provider.",
+          "type": "boolean"
+        },
+        "engine_version": {
+          "description": "Major PostgreSQL version, as both clouds accept it.",
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "size": {
+          "$ref": "#/$defs/size"
+        },
+        "storage_gb": {
+          "type": "integer",
+          "minimum": 10
+        },
+        "database_name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "username": {
+          "description": "Application role the services connect as. Not the administrator.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "password_secret": {
+          "description": "Secret container ID holding this role's password. Ansible reads it and creates the role; the value never reaches Terraform configuration, plan or state.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "backup_retention_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 35,
+          "default": 7
+        },
+        "deletion_protection": {
+          "type": "boolean",
+          "default": false
+        },
+        "queue_password_secret": {
+          "description": "Secret container holding the broker password. Required when managed, because the queue moves out of PostgreSQL and needs a credential of its own.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "queue_username": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "queue_vhost": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "managed": {
+                "const": true
+              }
+            },
+            "required": [
+              "managed"
+            ]
+          },
+          "then": {
+            "required": [
+              "engine_version",
+              "size",
+              "storage_gb",
+              "database_name",
+              "username",
+              "password_secret",
+              "queue_username",
+              "queue_password_secret"
+            ]
+          }
+        }
+      ]
     }
   },
   "$defs": {
@@ -349,13 +458,7 @@
           "minimum": 10
         },
         "type": {
-          "description": "Portable disk class. Terraform resolves it per cloud.",
-          "type": "string",
-          "enum": [
-            "standard",
-            "balanced",
-            "ssd"
-          ]
+          "$ref": "#/$defs/disk_class"
         },
         "iops": {
           "description": "Provisioned IOPS. AWS requires it for the disk classes that resolve to io1 or io2, and ignores it for the rest.",
@@ -493,22 +596,43 @@
           "$ref": "#/$defs/cloud"
         },
         "ci": {
-          "description": "Optional boot content for this VM. Present means the machine configures itself at first boot: a startup script on GCP, user data on AWS.",
+          "description": "Optional first-boot work for this VM. Terraform turns it into the cloud-init document the machine is created with: a list of commands to run, a script to write and run, or both.",
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "startup_script"
-          ],
           "properties": {
             "startup_script": {
               "type": "string",
               "minLength": 1
+            },
+            "commands": {
+              "description": "Commands run in order at first boot, before the script if there is one.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
-          }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "commands"
+              ]
+            },
+            {
+              "required": [
+                "startup_script"
+              ]
+            }
+          ]
         },
         "ssh_bootstrap": {
           "description": "Temporarily allow direct SSH on port 22 while the final sshd policy is installed. Bastion only; turn off after the first deployment.",
           "type": "boolean"
+        },
+        "extra_disks": {
+          "$ref": "#/$defs/extra_disks"
         }
       },
       "allOf": [
@@ -678,6 +802,55 @@
           "additionalProperties": {
             "type": "string",
             "minLength": 1
+          }
+        }
+      }
+    },
+    "disk_class": {
+      "description": "Portable disk class. Terraform resolves it per cloud.",
+      "type": "string",
+      "enum": [
+        "standard",
+        "balanced",
+        "ssd"
+      ]
+    },
+    "extra_disks": {
+      "description": "Data disks attached beside the boot disk. Terraform creates one block per entry, and the cloud-init written for the machine formats and mounts each of them at first boot.",
+      "type": "array",
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "size_gb",
+          "type",
+          "mount_path"
+        ],
+        "properties": {
+          "name": {
+            "description": "Suffix of the disk resource name, unique within the VM.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$"
+          },
+          "size_gb": {
+            "type": "integer",
+            "minimum": 10
+          },
+          "type": {
+            "$ref": "#/$defs/disk_class"
+          },
+          "iops": {
+            "description": "Provisioned IOPS, for the classes that resolve to io1 or io2 on AWS.",
+            "type": "integer",
+            "minimum": 100
+          },
+          "mount_path": {
+            "description": "Absolute path the disk is mounted at.",
+            "type": "string",
+            "pattern": "^/[A-Za-z0-9._/-]+$"
           }
         }
       }

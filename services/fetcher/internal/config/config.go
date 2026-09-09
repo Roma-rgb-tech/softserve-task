@@ -13,7 +13,9 @@ type Config struct {
 	OilPriceAPIKey string
 	DataProvider   string
 	DatabaseURL    string
+	QueueBackend   string
 	QueueName      string
+	AMQPURL        string
 	CronHours      []int
 	Timezone       *time.Location
 	FetchOnStartup bool
@@ -40,6 +42,16 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("DATABASE_URL must not be empty")
 	}
 
+	backend := strings.ToLower(env("QUEUE_BACKEND", "pgmq"))
+	if backend != "pgmq" && backend != "amqp" {
+		return Config{}, fmt.Errorf("QUEUE_BACKEND must be pgmq or amqp")
+	}
+
+	amqpURL := strings.TrimSpace(os.Getenv("AMQP_URL"))
+	if backend == "amqp" && amqpURL == "" {
+		return Config{}, fmt.Errorf("AMQP_URL is required when QUEUE_BACKEND=amqp")
+	}
+
 	hours, err := ParseHours(env("FETCH_CRON_HOURS", "0,6,12,18"))
 	if err != nil {
 		return Config{}, err
@@ -64,7 +76,9 @@ func Load() (Config, error) {
 		OilPriceAPIKey: apiKey,
 		DataProvider:   provider,
 		DatabaseURL:    databaseURL,
+		QueueBackend:   backend,
 		QueueName:      env("PGMQ_QUEUE", "price_observations"),
+		AMQPURL:        amqpURL,
 		CronHours:      hours,
 		Timezone:       location,
 		FetchOnStartup: fetchOnStartup,

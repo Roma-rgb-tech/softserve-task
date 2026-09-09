@@ -48,3 +48,21 @@ resource "aws_internet_gateway" "main" {
 
   tags = merge(local.tags, { Name = "${local.prefix}-igw" })
 }
+
+data "aws_availability_zones" "available" {
+  count = local.count
+
+  state = "available"
+}
+
+resource "aws_subnet" "database" {
+  for_each = local.database_subnets
+
+  vpc_id            = aws_vpc.main[0].id
+  cidr_block        = each.value.cidr_block
+  availability_zone = each.value.zone
+
+  map_public_ip_on_launch = false
+
+  tags = merge(local.tags, { Name = "${local.prefix}-database-${each.key}" })
+}

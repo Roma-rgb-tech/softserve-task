@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+ui_runtime_environment: >-
+  {{
+    ui_compose_environment
+    | combine({
+      'DOCKER_CONFIG': ui_docker_config_dir,
+      'POSTGRES_PASSWORD': ui_postgres_password,
+      'DATABASE_HOST': ui_database_host,
+      'HISTORY_SERVICE_URL': ui_history_service_url
+    })
+  }}

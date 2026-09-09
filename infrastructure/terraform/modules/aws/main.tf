@@ -57,3 +57,12 @@ module "monitoring" {
   config       = var.config
   instance_ids = module.vm.instance_ids
 }
+
+module "database" {
+  source = "./database"
+
+  config          = var.config
+  vpc_id          = module.network.vpc_id
+  subnet_ids      = module.network.database_subnet_ids
+  security_groups = module.firewall.security_groups
+}

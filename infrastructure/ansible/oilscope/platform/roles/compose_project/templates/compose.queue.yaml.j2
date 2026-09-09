@@ -1,0 +1,45 @@
+name: petroscope
+
+services:
+  rabbitmq:
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.1-management}
+    pull_policy: ${RABBITMQ_PULL_POLICY:-missing}
+    restart: unless-stopped
+    hostname: oilscope-queue
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-oil_tracker}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-oil_tracker}
+      TZ: UTC
+    ports:
+      - "${QUEUE_BIND_ADDRESS:-0.0.0.0}:${QUEUE_HOST_PORT:-5672}:5672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+        - CMD
+        - rabbitmq-diagnostics
+        - --quiet
+        - check_port_connectivity
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    stop_grace_period: 30s
+
+  migrate:
+    image: "{{ compose_project_config.registry.repository }}/database:{{ compose_project_config.registry.image_sha }}"
+    platform: ${POSTGRES_PLATFORM:-linux/amd64}
+    pull_policy: ${POSTGRES_PULL_POLICY:-always}
+    restart: "no"
+    command: ["petroscope-migrate"]
+    environment:
+      PGHOST: ${DATABASE_HOST:?DATABASE_HOST is required}
+      PGPORT: ${DATABASE_PORT:-5432}
+      PGUSER: ${POSTGRES_USER:-oil_tracker}
+      PGDATABASE: ${POSTGRES_DB:-oil_tracker}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGSSLMODE: ${DATABASE_SSLMODE:-require}
+
+volumes:
+  rabbitmq_data:

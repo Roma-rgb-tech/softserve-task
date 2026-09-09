@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Restart the Cloud SQL connector
+  become: true
+  ansible.builtin.systemd_service:
+    name: cloud-sql-proxy
+    daemon_reload: true
+    state: restarted

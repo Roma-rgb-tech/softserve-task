@@ -1,10 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
 - name: Deploy only History
-  environment:
-    DOCKER_CONFIG: "{{ history_docker_config_dir }}"
-    POSTGRES_PASSWORD: "{{ history_postgres_password }}"
-    DATABASE_HOST: "{{ hostvars[groups['database'][0]].internal_ip }}"
+  environment: "{{ history_runtime_environment }}"
   no_log: true
   block:
     - name: Pull the History image
@@ -63,9 +60,11 @@
       (history_health.json | default({})).get('database', '') == 'connected'
     - >-
       (history_health.json | default({})).get(
+        'queue_consumer',
+        (history_health.json | default({})).get('pgmq_consumer', '')
+      ) == 'ready'
+    - >-
+      (history_health.json | default({})).get('queue_backend', '') != 'pgmq'
+      or (history_health.json | default({})).get(
         'pgmq_extension', ''
       ) == 'installed'
-    - >-
-      (history_health.json | default({})).get(
-        'pgmq_consumer', ''
-      ) == 'ready'

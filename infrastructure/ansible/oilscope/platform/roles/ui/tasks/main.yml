@@ -1,12 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
 - name: Deploy only UI
-  environment:
-    DOCKER_CONFIG: "{{ ui_docker_config_dir }}"
-    POSTGRES_PASSWORD: "{{ ui_postgres_password }}"
-    DATABASE_HOST: "{{ hostvars[groups['database'][0]].internal_ip }}"
-    HISTORY_SERVICE_URL: >-
-      http://{{ hostvars[groups['history'][0]].internal_ip }}:8001
+  environment: "{{ ui_runtime_environment }}"
   no_log: true
   block:
     - name: Pull the UI image

@@ -11,6 +11,15 @@
 
     - role: oilscope.platform.docker_engine
 
+    - role: oilscope.platform.database_endpoint
+
+    - role: oilscope.platform.cloudsql_proxy
+      when: oilscope_database_managed and oilscope_cloud == 'gcp'
+      vars:
+        cloudsql_proxy_connection_name: "{{ oilscope_database_connection_name }}"
+        cloudsql_proxy_address: "{{ internal_ip }}"
+        cloudsql_proxy_port: "{{ oilscope_database_port }}"
+
     - role: oilscope.platform.compose_project
       vars:
         compose_project_config_path: "{{ project_config_path }}"
@@ -40,4 +49,9 @@
 
     - role: oilscope.platform.ui
       vars:
+        ui_database_host: "{{ oilscope_database_host }}"
+        ui_history_service_url: >-
+          http://{{ hostvars[groups['history'][0]].internal_ip }}:8001
+        ui_compose_environment:
+          DATABASE_SSLMODE: "{{ oilscope_database_sslmode }}"
         ui_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"

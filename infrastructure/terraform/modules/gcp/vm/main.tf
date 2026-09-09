@@ -20,6 +20,16 @@ resource "google_compute_instance" "workload" {
     }
   }
 
+  dynamic "attached_disk" {
+    for_each = each.value.extra_disks
+
+    content {
+      source      = google_compute_disk.extra["${each.key}/${attached_disk.value.name}"].id
+      device_name = attached_disk.value.name
+      mode        = "READ_WRITE"
+    }
+  }
+
   network_interface {
     subnetwork = each.value.public_subnet ? var.subnets.management : var.subnets.workload
     network_ip = each.value.internal_ip
@@ -66,6 +76,27 @@ resource "google_compute_instance" "workload" {
       "enable-oslogin" = "FALSE"
       "ssh-keys"       = local.ssh_keys
     },
-    each.value.startup == null ? {} : { "startup-script" = each.value.startup },
+    lookup(module.cloudinit.user_data, each.key, null) == null ? {} : {
+      "user-data" = module.cloudinit.user_data[each.key]
+    },
   )
+}
+
+module "cloudinit" {
+  source = "../../shared/cloudinit"
+
+  machines = {
+    for name, vm in local.vms : name => {
+      hostname = "${local.prefix}-${name}"
+      startup  = vm.startup
+      commands = vm.commands
+      disks = [
+        for disk in vm.extra_disks : {
+          name       = disk.name
+          size_gb    = disk.size_gb
+          mount_path = disk.mount_path
+        }
+      ]
+    }
+  }
 }

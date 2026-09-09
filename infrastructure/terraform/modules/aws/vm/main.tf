@@ -34,7 +34,7 @@ resource "aws_instance" "workload" {
 
   associate_public_ip_address = false
 
-  user_data = each.value.startup
+  user_data = lookup(module.cloudinit.user_data, each.key, null)
 
   root_block_device {
     volume_size = each.value.boot_disk.size_gb
@@ -43,6 +43,20 @@ resource "aws_instance" "workload" {
     encrypted   = true
 
     tags = merge(each.value.tags, { Name = "${local.prefix}-${each.key}-root" })
+  }
+
+  dynamic "ebs_block_device" {
+    for_each = each.value.extra_disks
+
+    content {
+      device_name = ebs_block_device.value.device_name
+      volume_size = ebs_block_device.value.size_gb
+      volume_type = ebs_block_device.value.disk_type
+      iops        = contains(local.needs_iops, ebs_block_device.value.disk_type) ? lookup(ebs_block_device.value, "iops", null) : null
+      encrypted   = true
+
+      tags = merge(each.value.tags, { Name = "${local.prefix}-${each.key}-${ebs_block_device.value.name}" })
+    }
   }
 
   metadata_options {
@@ -73,7 +87,36 @@ resource "aws_instance" "workload" {
       condition     = !contains(local.needs_iops, each.value.disk_type) || each.value.iops != null
       error_message = "Disk type ${each.value.boot_disk.type} resolves to ${each.value.disk_type} on aws, which requires boot_disk.iops in the project configuration."
     }
+
+    precondition {
+      condition     = alltrue([for disk in each.value.extra_disks : disk.disk_type != null])
+      error_message = "The catalog has no aws disk_type mapping for one of the extra disks on ${each.key}."
+    }
+
+    precondition {
+      condition     = alltrue([for disk in each.value.extra_disks : !contains(local.needs_iops, disk.disk_type) || lookup(disk, "iops", null) != null])
+      error_message = "An extra disk on ${each.key} resolves to a provisioned-IOPS type on aws and so needs an iops value in the project configuration."
+    }
   }
 
   tags = merge(each.value.tags, { Name = "${local.prefix}-${each.key}" })
+}
+
+module "cloudinit" {
+  source = "../../shared/cloudinit"
+
+  machines = {
+    for name, vm in local.vms : name => {
+      hostname = "${local.prefix}-${name}"
+      startup  = vm.startup
+      commands = vm.commands
+      disks = [
+        for disk in vm.extra_disks : {
+          name       = disk.name
+          size_gb    = disk.size_gb
+          mount_path = disk.mount_path
+        }
+      ]
+    }
+  }
 }

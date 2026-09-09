@@ -23,3 +23,8 @@ output "monitoring" {
     delivery  = length(module.monitoring.notification_channels) > 0 ? "email notification channels" : null
   }
 }
+
+output "database" {
+  description = "The managed database this cloud created, or null when the deployment runs PostgreSQL in a container instead."
+  value       = module.database.database
+}

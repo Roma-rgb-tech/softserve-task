@@ -23,3 +23,8 @@ output "monitoring" {
     delivery  = module.monitoring.alert_topic_arn
   }
 }
+
+output "database" {
+  description = "The managed database this cloud created, or null when the deployment runs PostgreSQL in a container instead."
+  value       = module.database.database
+}

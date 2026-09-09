@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Refuse to start a connector with no instance to connect to
+  ansible.builtin.fail:
+    msg: >-
+      cloudsql_proxy_connection_name is empty. Pass the Cloud SQL connection
+      name, as project:region:instance - the connector resolves no hostname and
+      has nothing else to go on.
+  when: cloudsql_proxy_connection_name | length == 0
+
+- name: Create the group the connector runs as
+  become: true
+  ansible.builtin.group:
+    name: "{{ cloudsql_proxy_group }}"
+    system: true
+    state: present
+
+- name: Create the locked account the connector runs as
+  become: true
+  ansible.builtin.user:
+    name: "{{ cloudsql_proxy_user }}"
+    group: "{{ cloudsql_proxy_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    password_lock: true
+    state: present
+
+- name: Install the connector
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ cloudsql_proxy_url }}"
+    dest: "{{ cloudsql_proxy_binary }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart the Cloud SQL connector
+
+- name: Install the connector service
+  become: true
+  ansible.builtin.template:
+    src: cloud-sql-proxy.service.j2
+    dest: /etc/systemd/system/cloud-sql-proxy.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the Cloud SQL connector
+
+- name: Apply a pending change before anything depends on it
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the connector
+  become: true
+  ansible.builtin.systemd_service:
+    name: cloud-sql-proxy
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Wait for the connector to accept connections
+  ansible.builtin.wait_for:
+    host: "{{ cloudsql_proxy_address }}"
+    port: "{{ cloudsql_proxy_port }}"
+    timeout: "{{ cloudsql_proxy_ready_retries | int * cloudsql_proxy_ready_delay | int }}"

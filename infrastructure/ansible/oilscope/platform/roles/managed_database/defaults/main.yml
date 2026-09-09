@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+managed_database_config_file: ""
+
+managed_database_gcloud: gcloud
+managed_database_aws: aws
+
+managed_database_api: https://sqladmin.googleapis.com/v1

@@ -3,13 +3,13 @@ package pgmq
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"oil-price-tracker/fetcher/internal/model"
 	"oil-price-tracker/fetcher/internal/provider"
+	"oil-price-tracker/fetcher/internal/queue"
 )
 
 type Publisher struct {
@@ -17,40 +17,13 @@ type Publisher struct {
 	QueueName string
 }
 
-type batchMessage struct {
-	SchemaVersion int                 `json:"schema_version"`
-	EventKey      string              `json:"event_key"`
-	Observations  []model.Observation `json:"observations"`
-}
-
 func (publisher Publisher) Publish(
 	ctx context.Context,
 	observations []model.Observation,
 ) error {
-	if len(observations) == 0 {
-		return fmt.Errorf(
-			"cannot publish an empty observation event",
-		)
-	}
-
-	eventKey := "oil-prices:" +
-		observations[0].
-			ScheduledFor.
-			UTC().
-			Format(time.RFC3339)
-
-	body, err := json.Marshal(
-		batchMessage{
-			SchemaVersion: 1,
-			EventKey:      eventKey,
-			Observations:  observations,
-		},
-	)
+	eventKey, body, err := queue.Encode(observations)
 	if err != nil {
-		return fmt.Errorf(
-			"encode observation event: %w",
-			err,
-		)
+		return err
 	}
 
 	return provider.Retry(

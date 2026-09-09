@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Cloud SQL Auth Proxy for {{ cloudsql_proxy_connection_name }}
+Documentation=https://cloud.google.com/sql/docs/postgres/connect-auth-proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ cloudsql_proxy_user }}
+Group={{ cloudsql_proxy_group }}
+ExecStart={{ cloudsql_proxy_binary }} \
+  --psc \
+  --address {{ cloudsql_proxy_address }} \
+  --port {{ cloudsql_proxy_port }} \
+  --health-check \
+  --http-address {{ cloudsql_proxy_health_address }} \
+  --http-port {{ cloudsql_proxy_health_port }} \
+  --structured-logs \
+  {{ cloudsql_proxy_connection_name }}
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

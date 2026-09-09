@@ -52,3 +52,11 @@ module "monitoring" {
 
   config = var.config
 }
+
+module "database" {
+  source = "./database"
+
+  config     = var.config
+  network_id = module.network.network_id
+  subnet_id  = module.network.database_subnet_id
+}

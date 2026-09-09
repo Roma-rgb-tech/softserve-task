@@ -24,3 +24,45 @@ oilscope_ssh_base_args: >-
   -o IdentitiesOnly=yes
   -o UserKnownHostsFile={{ oilscope_known_hosts }}
 ansible_ssh_common_args: "{{ oilscope_ssh_base_args }}"
+
+oilscope_project_config: >-
+  {{ lookup('ansible.builtin.file', project_config_path) | from_json }}
+
+oilscope_database_settings: "{{ oilscope_project_config.database | default({}) }}"
+
+oilscope_database_managed: >-
+  {{ oilscope_database_settings.managed | default(false) | bool }}
+
+oilscope_database_name: "{{ oilscope_database_settings.database_name | default('oil_tracker') }}"
+oilscope_database_user: "{{ oilscope_database_settings.username | default('oil_tracker') }}"
+oilscope_database_port: "{{ oilscope_project_config.service_ports.postgresql | default(5432) }}"
+oilscope_database_password_secret: >-
+  {{ oilscope_database_settings.password_secret | default('') }}
+
+oilscope_name_prefix: >-
+  {{ oilscope_project_config.name_prefix }}-{{ oilscope_project_config.environment }}
+oilscope_database_instance: "{{ oilscope_name_prefix }}-database"
+
+oilscope_gcp_project: "{{ oilscope_project_config.gcp.project_id | default('') }}"
+oilscope_gcp_region: >-
+  {{ oilscope_project_config.catalog.region.gcp[oilscope_project_config.default_region]
+     | default('') }}
+oilscope_aws_region: >-
+  {{ lookup('ansible.builtin.env', 'AWS_REGION')
+     | default(oilscope_project_config.aws.regions | default([]) | first | default(''), true) }}
+
+oilscope_database_connection_name: >-
+  {{ oilscope_gcp_project }}:{{ oilscope_gcp_region }}:{{ oilscope_database_instance }}
+
+oilscope_queue_backend: "{{ 'amqp' if oilscope_database_managed else 'pgmq' }}"
+oilscope_queue_user: "{{ oilscope_database_settings.queue_username | default('oil_tracker') }}"
+oilscope_queue_vhost: "{{ oilscope_database_settings.queue_vhost | default('oil_tracker') }}"
+oilscope_queue_port: "{{ oilscope_project_config.service_ports.amqp | default(5672) }}"
+oilscope_queue_host: >-
+  {{ hostvars[groups['database'][0]].internal_ip
+     if (groups['database'] | default([]) | length) > 0 else '' }}
+
+oilscope_database_sslmode: >-
+  {{ 'disable'
+     if (not oilscope_database_managed or oilscope_cloud == 'gcp')
+     else 'require' }}

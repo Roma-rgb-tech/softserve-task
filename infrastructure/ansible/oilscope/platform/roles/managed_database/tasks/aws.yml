@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Resolve the target region
+  ansible.builtin.set_fact:
+    managed_database_region: >-
+      {{ lookup('ansible.builtin.env', 'AWS_REGION')
+         | default(lookup('ansible.builtin.env', 'AWS_DEFAULT_REGION'), true)
+         | default(managed_database_config.aws.regions | default([]) | first | default(''), true) }}
+
+- name: Refuse to continue without a target region
+  ansible.builtin.fail:
+    msg: >-
+      No AWS region resolved. Set $AWS_REGION or aws.regions in the project
+      configuration.
+  when: managed_database_region | length == 0
+
+- name: Find the container RDS keeps its master password in
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_aws }}"
+      - rds
+      - describe-db-instances
+      - --db-instance-identifier
+      - "{{ managed_database_instance }}"
+      - --region
+      - "{{ managed_database_region }}"
+      - --query
+      - DBInstances[0].MasterUserSecret.SecretArn
+      - --output
+      - text
+  register: managed_database_master_secret
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to continue without that container
+  ansible.builtin.fail:
+    msg: >-
+      RDS reported no managed master secret for {{ managed_database_instance }}.
+      Run terraform apply before deploying.
+  when: >-
+    (managed_database_master_secret.stdout | trim) in ['', 'None']
+
+- name: Read the password RDS generated
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_aws }}"
+      - secretsmanager
+      - get-secret-value
+      - --secret-id
+      - "{{ managed_database_master_secret.stdout | trim }}"
+      - --region
+      - "{{ managed_database_region }}"
+      - --query
+      - SecretString
+      - --output
+      - text
+  register: managed_database_master_value
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Read what the project container currently holds
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_aws }}"
+      - secretsmanager
+      - get-secret-value
+      - --secret-id
+      - "{{ managed_database_settings.password_secret }}"
+      - --region
+      - "{{ managed_database_region }}"
+      - --query
+      - SecretString
+      - --output
+      - text
+  register: managed_database_current
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Copy the generated password into the project container
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_aws }}"
+      - secretsmanager
+      - put-secret-value
+      - --secret-id
+      - "{{ managed_database_settings.password_secret }}"
+      - --region
+      - "{{ managed_database_region }}"
+      - --secret-string
+      - file:///dev/stdin
+      - --query
+      - VersionId
+      - --output
+      - text
+    stdin: "{{ (managed_database_master_value.stdout | from_json).password }}"
+    stdin_add_newline: false
+  when:
+    - (managed_database_current.stdout | default('') | trim)
+      != (managed_database_master_value.stdout | from_json).password
+    - not ansible_check_mode
+  changed_when: true
+  no_log: true
+
+- name: Report what was reconciled
+  ansible.builtin.debug:
+    msg: >-
+      {{ managed_database_settings.password_secret }} now holds the password
+      RDS generated for {{ managed_database_settings.username }} on
+      {{ managed_database_instance }}

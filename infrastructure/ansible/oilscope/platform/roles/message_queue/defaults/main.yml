@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+message_queue_compose_project_dir: /opt/oilscope/app
+message_queue_compose_file: "{{ message_queue_compose_project_dir }}/compose.yaml"
+message_queue_compose_project_name: petroscope
+message_queue_service: rabbitmq
+message_queue_migration_service: migrate
+
+message_queue_user: oil_tracker
+message_queue_password: ""
+message_queue_vhost: oil_tracker
+message_queue_bind_address: 0.0.0.0
+message_queue_host_port: 5672
+
+message_queue_database_host: ""
+message_queue_database_port: 5432
+message_queue_database_name: oil_tracker
+message_queue_database_user: oil_tracker
+message_queue_database_password: ""
+message_queue_database_sslmode: require
+
+message_queue_health_retries: 30
+message_queue_health_delay: 5
+message_queue_docker_config_dir: /run/oilscope/docker-auth

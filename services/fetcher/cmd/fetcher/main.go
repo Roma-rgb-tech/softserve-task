@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"oil-price-tracker/fetcher/internal/amqp"
 	"oil-price-tracker/fetcher/internal/config"
 	"oil-price-tracker/fetcher/internal/pgmq"
 	"oil-price-tracker/fetcher/internal/provider"
@@ -54,13 +55,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	collector := service.New(
-		priceProvider,
-		pgmq.Publisher{
+	var publisher service.Publisher = pgmq.Publisher{
+		DB:        database,
+		QueueName: configuration.QueueName,
+	}
+
+	if configuration.QueueBackend == "amqp" {
+		publisher = amqp.Publisher{
 			DB:        database,
+			URL:       configuration.AMQPURL,
 			QueueName: configuration.QueueName,
-		},
-	)
+			Timeout:   configuration.RequestTimeout,
+		}
+	}
+
+	collector := service.New(priceProvider, publisher)
 
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
@@ -141,7 +150,7 @@ func main() {
 				"status":   "ok",
 				"provider": configuration.DataProvider,
 				"running":  running,
-				"delivery": "pgmq",
+				"delivery": configuration.QueueBackend,
 				"queue":    configuration.QueueName,
 				"schedule": map[string]any{
 					"hours":    configuration.CronHours,

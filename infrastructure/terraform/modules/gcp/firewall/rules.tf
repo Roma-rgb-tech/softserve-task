@@ -52,11 +52,19 @@ locals {
     }
 
     "postgresql" = {
-      enabled       = local.enabled
+      enabled       = local.enabled && !local.managed
       source_ranges = null
       source_tags   = [local.tags.fetcher, local.tags.history, local.tags.ui]
       target_tags   = [local.tags.infra]
       allow         = [{ protocol = "tcp", ports = [tostring(var.config.service_ports.postgresql)] }]
+    }
+
+    "amqp" = {
+      enabled       = local.enabled && local.managed
+      source_ranges = null
+      source_tags   = [local.tags.fetcher, local.tags.history]
+      target_tags   = [local.tags.infra]
+      allow         = [{ protocol = "tcp", ports = [tostring(lookup(var.config.service_ports, "amqp", 5672))] }]
     }
   }
 

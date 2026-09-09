@@ -17,3 +17,13 @@ output "subnets" {
     } : name => id if id != null
   }
 }
+
+output "database_subnet_ids" {
+  description = "Subnets the DB subnet group spans. Empty when the database is not managed. They stay on the VPC main route table, so the database has no path to the internet in either direction."
+  value       = sort([for subnet in aws_subnet.database : subnet.id])
+}
+
+output "database_subnet_cidrs" {
+  description = "Ranges of those subnets, for the rules that let the workloads reach the database."
+  value       = sort([for subnet in aws_subnet.database : subnet.cidr_block])
+}

@@ -12,6 +12,9 @@ services:
       DATA_PROVIDER: ${DATA_PROVIDER:-oilpriceapi}
       # yamllint disable rule:line-length
       DATABASE_URL: postgres://${POSTGRES_USER:-oil_tracker}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@${DATABASE_HOST:?DATABASE_HOST is required}:${DATABASE_PORT:-5432}/${POSTGRES_DB:-oil_tracker}?sslmode=${DATABASE_SSLMODE:-disable}
+      QUEUE_BACKEND: ${QUEUE_BACKEND:-pgmq}
+      AMQP_URL: amqp://${RABBITMQ_USER:-oil_tracker}:${RABBITMQ_PASSWORD:-}@${RABBITMQ_HOST:-rabbitmq}:${RABBITMQ_PORT:-5672}/${RABBITMQ_VHOST:-oil_tracker}
+      AMQP_QUEUE: ${PGMQ_QUEUE:-price_observations}
       # yamllint enable rule:line-length
       PGMQ_QUEUE: ${PGMQ_QUEUE:-price_observations}
       FETCH_CRON_HOURS: ${FETCH_CRON_HOURS:-0,6,12,18}

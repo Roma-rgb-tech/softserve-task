@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Point the workloads at the container on the database VM
+  ansible.builtin.set_fact:
+    oilscope_database_host: "{{ hostvars[groups['database'][0]].internal_ip }}"
+  when: not oilscope_database_managed
+
+- name: Resolve the managed database
+  ansible.builtin.include_tasks: "{{ oilscope_cloud }}.yml"
+  when: oilscope_database_managed
+
+- name: Report where the database is
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} reaches PostgreSQL at
+      {{ oilscope_database_host }}:{{ oilscope_database_port }}
+      ({{ 'managed by ' ~ oilscope_cloud if oilscope_database_managed
+          else 'container on ' ~ groups['database'][0] }})

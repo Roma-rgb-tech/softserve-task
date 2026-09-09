@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Resolve the target project
+  ansible.builtin.set_fact:
+    managed_database_project: >-
+      {{ lookup('ansible.builtin.env', 'GOOGLE_PROJECT')
+         | default(managed_database_config.gcp.project_id | default(''), true) }}
+
+- name: Refuse to continue without a target project
+  ansible.builtin.fail:
+    msg: >-
+      No GCP project resolved. Set $GOOGLE_PROJECT or gcp.project_id in the
+      project configuration.
+  when: managed_database_project | length == 0
+
+- name: Read the application password from the project secret
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_gcloud }}"
+      - secrets
+      - versions
+      - access
+      - latest
+      - "--secret={{ managed_database_settings.password_secret }}"
+      - "--project={{ managed_database_project }}"
+  register: managed_database_password
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Take an access token for the Cloud SQL Admin API
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_gcloud }}"
+      - auth
+      - print-access-token
+  register: managed_database_token
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Ask the instance which roles it already has
+  ansible.builtin.uri:
+    url: >-
+      {{ managed_database_api }}/projects/{{ managed_database_project }}/instances/{{ managed_database_instance }}/users
+    method: GET
+    headers:
+      Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
+    status_code: 200
+  register: managed_database_users
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Note whether the application role exists
+  ansible.builtin.set_fact:
+    managed_database_role_exists: >-
+      {{ managed_database_settings.username
+         in (managed_database_users.json['items'] | default([]) | map(attribute='name') | list) }}
+
+- name: Create the application role
+  ansible.builtin.uri:
+    url: >-
+      {{ managed_database_api }}/projects/{{ managed_database_project }}/instances/{{ managed_database_instance }}/users
+    method: POST
+    headers:
+      Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
+    body_format: json
+    body:
+      name: "{{ managed_database_settings.username }}"
+      password: "{{ managed_database_password.stdout }}"
+    status_code: 200
+  when:
+    - not managed_database_role_exists
+    - not ansible_check_mode
+  changed_when: true
+  no_log: true
+
+- name: Set the password of the application role
+  ansible.builtin.uri:
+    url: >-
+      {{ managed_database_api }}/projects/{{ managed_database_project }}/instances/{{ managed_database_instance }}/users?name={{ managed_database_settings.username }}&host=
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
+    body_format: json
+    body:
+      name: "{{ managed_database_settings.username }}"
+      password: "{{ managed_database_password.stdout }}"
+    status_code: 200
+  when:
+    - managed_database_role_exists
+    - not ansible_check_mode
+  changed_when: true
+  no_log: true
+
+- name: Report what was reconciled
+  ansible.builtin.debug:
+    msg: >-
+      {{ managed_database_settings.username }} on {{ managed_database_instance }}
+      now authenticates with the value in
+      {{ managed_database_settings.password_secret }}

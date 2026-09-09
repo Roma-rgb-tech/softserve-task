@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -192,3 +193,127 @@ class PGMQConsumer:
 
             if not archived:
                 raise RuntimeError(f"failed to archive PGMQ message {msg_id}")
+
+
+class AMQPConsumer:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.connection: Any = None
+        self.channel: Any = None
+        self.ready = False
+
+    @property
+    def is_ready(self) -> bool:
+        return bool(self.ready and self.connection is not None and not self.connection.is_closed)
+
+    async def start(self) -> None:
+        import aio_pika
+
+        self.connection = await aio_pika.connect_robust(self.settings.amqp_url)
+        self.channel = await self.connection.channel()
+
+        await self.channel.set_qos(prefetch_count=self.settings.amqp_prefetch)
+
+        queue = await self.channel.declare_queue(
+            self.settings.amqp_queue,
+            durable=True,
+        )
+
+        await queue.consume(self._on_message)
+
+        self.ready = True
+
+        logger.info(
+            "AMQP consumer started",
+            extra={
+                "queue": self.settings.amqp_queue,
+            },
+        )
+
+    async def stop(self) -> None:
+        self.ready = False
+
+        if self.connection is not None:
+            await self.connection.close()
+            self.connection = None
+            self.channel = None
+
+    async def _on_message(self, message: Any) -> None:
+        try:
+            payload = json.loads(message.body)
+
+        except ValueError as exc:
+            logger.error(
+                "unreadable broker message",
+                extra={
+                    "message_id": message.message_id,
+                    "error": str(exc),
+                },
+            )
+
+            await message.reject(requeue=False)
+
+            return
+
+        try:
+            event = ObservationEvent.model_validate(payload)
+
+        except ValidationError as exc:
+            logger.error(
+                "permanently invalid broker message",
+                extra={
+                    "message_id": message.message_id,
+                    "error": str(exc),
+                },
+            )
+
+            await message.reject(requeue=False)
+
+            return
+
+        try:
+            inserted, duplicates = await asyncio.to_thread(
+                self._persist,
+                event,
+            )
+
+        except Exception:
+            logger.exception(
+                "failed to persist broker message",
+                extra={
+                    "message_id": message.message_id,
+                    "redelivered": message.redelivered,
+                },
+            )
+
+            await message.reject(requeue=not message.redelivered)
+
+            return
+
+        await message.ack()
+
+        logger.info(
+            "broker message persisted",
+            extra={
+                "message_id": message.message_id,
+                "event_key": event.event_key,
+                "inserted": inserted,
+                "duplicates": duplicates,
+            },
+        )
+
+    def _persist(self, event: ObservationEvent) -> tuple[int, int]:
+        with SessionLocal() as session:
+            return insert_batch(session, event.observations)
+
+
+def create_consumer(settings: Settings) -> PGMQConsumer | AMQPConsumer:
+    if settings.queue_backend == "amqp":
+        return AMQPConsumer(settings)
+
+    if settings.queue_backend != "pgmq":
+        raise ValueError(
+            f"queue_backend must be pgmq or amqp, not {settings.queue_backend!r}"
+        )
+
+    return PGMQConsumer(settings)

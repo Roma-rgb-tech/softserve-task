@@ -19,7 +19,8 @@ locals {
     for vm in local.bastion_vms : lookup(vm, "ssh_bootstrap", false)
   ]) && local.bastion_port != 22
 
-  ports = var.config.service_ports
+  ports     = var.config.service_ports
+  amqp_port = lookup(var.config.service_ports, "amqp", 5672)
 
   ingress_rules = merge(
     {
@@ -55,11 +56,19 @@ locals {
       }
     },
     {
-      for role in local.enabled ? ["fetcher", "history", "ui"] : [] :
+      for role in local.enabled && !local.managed ? ["fetcher", "history", "ui"] : [] :
       "postgresql/${role}" => {
         group       = "infra", cidr_ipv4 = null, source_group = role
         from_port   = local.ports.postgresql, to_port = local.ports.postgresql
         description = "PostgreSQL from ${role}"
+      }
+    },
+    {
+      for role in local.enabled && local.managed ? ["fetcher", "history"] : [] :
+      "amqp/${role}" => {
+        group       = "infra", cidr_ipv4 = null, source_group = role
+        from_port   = local.amqp_port, to_port = local.amqp_port
+        description = "AMQP from ${role}"
       }
     },
     {

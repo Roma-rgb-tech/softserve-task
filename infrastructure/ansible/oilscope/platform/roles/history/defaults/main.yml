@@ -4,6 +4,8 @@ history_compose_project_dir: /opt/oilscope/app
 history_compose_file: "{{ history_compose_project_dir }}/compose.yaml"
 history_compose_project_name: petroscope
 
+history_database_host: postgres
+history_compose_environment: {}
 history_postgres_password: ""
 history_health_retries: 30
 history_health_delay: 2

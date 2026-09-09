@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+cloudsql_proxy_version: v2.15.2
+cloudsql_proxy_url: >-
+  https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/{{ cloudsql_proxy_version }}/cloud-sql-proxy.linux.amd64
+cloudsql_proxy_binary: /usr/local/bin/cloud-sql-proxy
+
+cloudsql_proxy_user: cloudsql-proxy
+cloudsql_proxy_group: cloudsql-proxy
+
+cloudsql_proxy_connection_name: ""
+cloudsql_proxy_address: 127.0.0.1
+cloudsql_proxy_port: 5432
+
+cloudsql_proxy_health_address: 127.0.0.1
+cloudsql_proxy_health_port: 9801
+
+cloudsql_proxy_ready_retries: 30
+cloudsql_proxy_ready_delay: 2

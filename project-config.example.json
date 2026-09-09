@@ -55,6 +55,18 @@
         "ubuntu-26.04": "ubuntu/images/hvm-ssd-gp3/ubuntu-resolute-26.04-amd64-server-*",
         "ubuntu-24.04": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
       }
+    },
+    "db_size": {
+      "gcp": {
+        "micro": "db-f1-micro",
+        "small": "db-g1-small",
+        "medium": "db-custom-1-3840"
+      },
+      "aws": {
+        "micro": "db.t3.micro",
+        "small": "db.t3.small",
+        "medium": "db.t3.medium"
+      }
     }
   },
   "environment": "dev",
@@ -92,11 +104,16 @@
     "workload_subnet_cidr": "10.0.1.0/26",
     "ui_public_ports": [
       443
+    ],
+    "database_subnet_cidrs": [
+      "10.10.2.0/24",
+      "10.10.3.0/24"
     ]
   },
   "service_ports": {
     "history_api": 8001,
-    "postgresql": 5432
+    "postgresql": 5432,
+    "amqp": 5672
   },
   "monitoring": {
     "alert_emails": [
@@ -117,7 +134,8 @@
     }
   },
   "generated_secrets": [
-    "example-db-password"
+    "example-db-password",
+    "oilscope-dev-queue-password"
   ],
   "vms": {
     "bastion": {
@@ -155,7 +173,8 @@
       ],
       "secret_mappings": {
         "POSTGRES_PASSWORD": "example-db-password",
-        "GHCR_TOKEN": "example-ghcr-token"
+        "GHCR_TOKEN": "example-ghcr-token",
+        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password"
       }
     },
     "history": {
@@ -173,8 +192,17 @@
       ],
       "secret_mappings": {
         "POSTGRES_PASSWORD": "example-db-password",
-        "GHCR_TOKEN": "example-ghcr-token"
-      }
+        "GHCR_TOKEN": "example-ghcr-token",
+        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password"
+      },
+      "extra_disks": [
+        {
+          "name": "data",
+          "size_gb": 20,
+          "type": "balanced",
+          "mount_path": "/var/lib/oilscope"
+        }
+      ]
     },
     "fetcher": {
       "role": "fetcher",
@@ -192,7 +220,8 @@
       "secret_mappings": {
         "POSTGRES_PASSWORD": "example-db-password",
         "OILPRICEAPI_KEY": "example-api-key",
-        "GHCR_TOKEN": "example-ghcr-token"
+        "GHCR_TOKEN": "example-ghcr-token",
+        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password"
       }
     },
     "ui": {
@@ -217,5 +246,19 @@
         "acme_email": "example-operator@example.com"
       }
     }
+  },
+  "database": {
+    "managed": false ,
+    "engine_version": "16",
+    "size": "micro",
+    "storage_gb": 20,
+    "database_name": "oil_tracker",
+    "username": "oil_tracker",
+    "password_secret": "oilscope-dev-db-password",
+    "backup_retention_days": 7,
+    "deletion_protection": false,
+    "queue_username": "oil_tracker",
+    "queue_vhost": "oil_tracker",
+    "queue_password_secret": "oilscope-dev-queue-password"
   }
 }

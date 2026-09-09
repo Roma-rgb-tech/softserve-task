@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Refuse to start a broker without a password
+  ansible.builtin.fail:
+    msg: >-
+      message_queue_password is empty. The broker replaces the queue that used
+      to live inside PostgreSQL, so it needs a credential of its own.
+  when: message_queue_password | length == 0
+
+- name: Refuse to migrate a database that has no address
+  ansible.builtin.fail:
+    msg: >-
+      message_queue_database_host is empty. The migrations run against the
+      managed database from this machine.
+  when: message_queue_database_host | length == 0
+
+- name: Start the broker
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ message_queue_compose_project_name }}"
+      - --file
+      - "{{ message_queue_compose_file }}"
+      - up
+      - --detach
+      - --no-deps
+      - "{{ message_queue_service }}"
+  args:
+    chdir: "{{ message_queue_compose_project_dir }}"
+  environment: "{{ message_queue_runtime_environment }}"
+  register: message_queue_compose_up
+  changed_when: >-
+    'Created' in message_queue_compose_up.stderr or
+    'Started' in message_queue_compose_up.stderr or
+    'Recreated' in message_queue_compose_up.stderr
+  no_log: true
+
+- name: Get the broker container ID
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ message_queue_compose_project_name }}"
+      - --file
+      - "{{ message_queue_compose_file }}"
+      - ps
+      - --quiet
+      - "{{ message_queue_service }}"
+  args:
+    chdir: "{{ message_queue_compose_project_dir }}"
+  environment: "{{ message_queue_runtime_environment }}"
+  register: message_queue_container
+  changed_when: false
+  failed_when: message_queue_container.stdout | trim | length == 0
+  no_log: true
+
+- name: Wait for the broker to become healthy
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}missing{{ '{{' }}end{{ '}}' }}"
+      - "{{ message_queue_container.stdout | trim }}"
+  register: message_queue_health
+  changed_when: false
+  retries: "{{ message_queue_health_retries }}"
+  delay: "{{ message_queue_health_delay }}"
+  until: message_queue_health.stdout | trim == 'healthy'
+
+- name: Apply database migrations
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ message_queue_compose_project_name }}"
+      - --file
+      - "{{ message_queue_compose_file }}"
+      - run
+      - --rm
+      - --no-deps
+      - "{{ message_queue_migration_service }}"
+  args:
+    chdir: "{{ message_queue_compose_project_dir }}"
+  environment: "{{ message_queue_runtime_environment }}"
+  register: message_queue_migrations
+  changed_when: "'Applying ' in message_queue_migrations.stdout"
+  no_log: true

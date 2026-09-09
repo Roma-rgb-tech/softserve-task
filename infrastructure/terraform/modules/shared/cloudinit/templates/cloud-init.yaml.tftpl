@@ -1,0 +1,39 @@
+#cloud-config
+write_files:
+%{~ if length(disks) > 0 }
+  - path: /etc/oilscope/disks
+    owner: root:root
+    permissions: "0644"
+    content: |
+%{~ for disk in disks }
+      ${disk.size_gb} ${disk.mount_path} ${disk.name}
+%{~ endfor }
+  - path: /usr/local/sbin/oilscope-prepare-disks
+    owner: root:root
+    permissions: "0755"
+    content: |
+      ${indent(6, prepare_disks)}
+%{~ endif }
+%{~ if startup != "" }
+  - path: /usr/local/sbin/oilscope-startup
+    owner: root:root
+    permissions: "0755"
+    content: |
+      ${indent(6, startup)}
+%{~ endif }
+  - path: /etc/oilscope/cloud-init.done
+    owner: root:root
+    permissions: "0644"
+    content: |
+      ${hostname}
+runcmd:
+%{~ if length(disks) > 0 }
+  - [/usr/local/sbin/oilscope-prepare-disks, /etc/oilscope/disks]
+%{~ endif }
+%{~ for command in commands }
+  - ${jsonencode(command)}
+%{~ endfor }
+%{~ if startup != "" }
+  - [/usr/local/sbin/oilscope-startup]
+%{~ endif }
+  - [touch, /etc/oilscope/cloud-init.done]
