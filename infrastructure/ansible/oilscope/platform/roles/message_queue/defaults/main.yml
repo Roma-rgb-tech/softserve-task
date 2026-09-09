@@ -22,3 +22,5 @@ message_queue_database_sslmode: require
 message_queue_health_retries: 30
 message_queue_health_delay: 5
 message_queue_docker_config_dir: /run/oilscope/docker-auth
+
+message_queue_show_migration_output: false

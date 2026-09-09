@@ -89,4 +89,4 @@
   environment: "{{ message_queue_runtime_environment }}"
   register: message_queue_migrations
   changed_when: "'Applying ' in message_queue_migrations.stdout"
-  no_log: true
+  no_log: "{{ not message_queue_show_migration_output }}"
