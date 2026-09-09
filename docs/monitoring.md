@@ -32,7 +32,6 @@ a throwaway environment, and it keeps the module honest about what it owns.
 | Memory | alert policy on `agent.googleapis.com/memory/percent_used` | alarm on `CWAgent mem_used_percent` |
 | Disk | alert policy on `agent.googleapis.com/disk/percent_used` | alarm on `CWAgent disk_used_percent` |
 | VM availability | absence of `instance/uptime` for five minutes | `StatusCheckFailed`, missing data treated as breaching |
-| Public endpoint | uptime check, TCP, every five minutes | Route 53 health check, TCP, every thirty seconds |
 | 5xx responses | log-based metric over the container logs | log metric filter over the same logs |
 | Spend | `google_billing_budget` | `aws_budgets_budget` |
 | Overview | Cloud Monitoring dashboard | CloudWatch dashboard |
@@ -48,18 +47,14 @@ GCP policy is a `condition_absent` on the uptime metric, and the AWS alarm sets
 `treat_missing_data = "breaching"`. Both are the same statement: an instance
 that stopped saying anything has not become healthy.
 
-That covers the machine. Whether the service on it can still be reached from
-outside is a different question, and it is answered by the uptime check on GCP
-and the Route 53 health check on AWS, both aimed at the public address of the
-VM that carries a `public_endpoint`.
-
-Both probe TCP rather than HTTPS on purpose: the certificate is issued to the
-endpoint hostname and the probes call an address, so a TLS failure would say
-nothing about whether the service is up.
-
-Route 53 publishes its health-check metrics into `us-east-1` and nowhere else.
-Outside that region the check would exist and the alarm would never fire, so
-the module creates neither — better than a green alarm that means nothing.
+That covers the machine, not the path to it. Nothing here probes the published
+site from outside. The checks that used to do it opened a TCP connection to
+port 443 and closed it again, which stayed green whether the proxy answered
+normally, answered with an error, or served an expired certificate — the same
+statement the availability policy already makes, at the price of a second alert
+to read. A probe worth keeping would request a page over HTTPS and validate the
+certificate; until there is one, a working VM whose site is unreachable is not
+detected here.
 
 ### Memory and disk need an agent
 
@@ -171,7 +166,6 @@ allowed to create one and cannot quietly start an unbounded log bill.
 ## A note on cost
 
 Alerts, alarms, dashboards and budgets are free or close to it at this size.
-The two things that are not: log ingestion, which both clouds bill per GiB
-beyond a monthly free allowance, and the Route 53 health check, which is a flat
-monthly charge. Retention on the AWS log group is set to 30 days for that
-reason; the GCP `_Default` bucket keeps logs for 30 days out of the box.
+The one thing that is: log ingestion, which both clouds bill per GiB beyond a
+monthly free allowance. Retention on the AWS log group is set to 30 days for
+that reason; the GCP `_Default` bucket keeps logs for 30 days out of the box.
