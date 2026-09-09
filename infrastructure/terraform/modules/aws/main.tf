@@ -56,5 +56,4 @@ module "monitoring" {
 
   config       = var.config
   instance_ids = module.vm.instance_ids
-  public_ips   = module.addresses.public_ips
 }

@@ -37,7 +37,6 @@ module "vm" {
   config             = var.config
   subnets            = module.network.subnets
   runtime_identities = module.iam.runtime_identities
-  public_ips         = module.addresses.public_ips
 }
 
 module "secrets" {
@@ -50,6 +49,5 @@ module "secrets" {
 module "monitoring" {
   source = "./monitoring"
 
-  config     = var.config
-  public_ips = module.addresses.public_ips
+  config = var.config
 }
