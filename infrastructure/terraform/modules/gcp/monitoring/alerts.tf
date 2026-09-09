@@ -41,6 +41,10 @@ resource "google_monitoring_alert_policy" "availability" {
     mime_type = "text/markdown"
   }
 
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
   conditions {
     display_name = "No uptime samples for five minutes"
 
