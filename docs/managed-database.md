@@ -103,6 +103,16 @@ nothing more. No key file is written anywhere.
 The proxy listens on the machine's private address, not on the loopback. The
 services run in containers, and inside a container `127.0.0.1` is the container.
 
+The proxy does not dial the endpoint address. It asks the Admin API for the
+instance's own DNS name - something like
+`52fbddde28ed.1y4uafloceyrt.us-east1.sql.goog` - and resolves that. With private
+services access Google publishes that record itself. With Private Service
+Connect it does not: the name is expected to resolve inside your VPC, to your
+endpoint. So the module creates a private Cloud DNS zone for that name and an A
+record in it pointing at the forwarding rule's address. Without it the proxy
+fails with `no such host` and nothing reaches the database. This needs
+`dns.googleapis.com` enabled in the project.
+
 ## Where the password lives
 
 Nowhere in Terraform - not in the configuration, not in the plan, not in the
