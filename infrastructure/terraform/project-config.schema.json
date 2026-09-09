@@ -414,6 +414,15 @@
         "queue_vhost": {
           "type": "string",
           "minLength": 1
+        },
+        "edition": {
+          "description": "Cloud SQL edition. The shared-core tiers exist only in ENTERPRISE; ENTERPRISE_PLUS accepts only the performance-optimised machine types. Ignored on AWS.",
+          "type": "string",
+          "enum": [
+            "ENTERPRISE",
+            "ENTERPRISE_PLUS"
+          ],
+          "default": "ENTERPRISE"
         }
       },
       "allOf": [

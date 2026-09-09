@@ -248,7 +248,7 @@
     }
   },
   "database": {
-    "managed": false ,
+    "managed": false,
     "engine_version": "16",
     "size": "micro",
     "storage_gb": 20,
@@ -259,6 +259,7 @@
     "deletion_protection": false,
     "queue_username": "oil_tracker",
     "queue_vhost": "oil_tracker",
-    "queue_password_secret": "oilscope-dev-queue-password"
+    "queue_password_secret": "oilscope-dev-queue-password",
+    "edition": "ENTERPRISE"
   }
 }

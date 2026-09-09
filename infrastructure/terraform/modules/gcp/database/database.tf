@@ -9,6 +9,7 @@ resource "google_sql_database_instance" "main" {
 
   settings {
     tier              = local.tier
+    edition           = local.edition
     availability_type = "ZONAL"
     disk_size         = local.settings.storage_gb
     disk_type         = "PD_SSD"

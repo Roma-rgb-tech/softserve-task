@@ -12,6 +12,8 @@ locals {
 
   enabled = local.in_use && lookup(local.settings, "managed", false) && length(local.database_cidrs) > 0 ? 1 : 0
 
+  edition = lookup(local.settings, "edition", "ENTERPRISE")
+
   flags = {
     "cloudsql.enable_pg_cron" = "on"
     "cron.database_name"      = lookup(local.settings, "database_name", "postgres")
