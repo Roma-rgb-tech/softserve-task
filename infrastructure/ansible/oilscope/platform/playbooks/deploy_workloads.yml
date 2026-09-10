@@ -1,13 +1,118 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-- name: Deploy Database workload
-  ansible.builtin.import_playbook: database.yml
+- name: Deploy the workloads
+  hosts: workloads
+  become: true
+  gather_facts: true
+  force_handlers: true
+  any_errors_fatal: true
 
-- name: Deploy History workload
-  ansible.builtin.import_playbook: history.yml
+  roles:
+    - role: oilscope.platform.host_baseline
 
-- name: Deploy Fetcher workload
-  ansible.builtin.import_playbook: fetcher.yml
+    - role: oilscope.platform.docker_engine
 
-- name: Deploy UI workload
-  ansible.builtin.import_playbook: ui.yml
+    - role: oilscope.platform.database_endpoint
+
+    - role: oilscope.platform.cloudsql_proxy
+      when: oilscope_database_managed and oilscope_cloud == 'gcp'
+      vars:
+        cloudsql_proxy_connection_name: "{{ oilscope_database_connection_name }}"
+        cloudsql_proxy_address: "{{ internal_ip }}"
+        cloudsql_proxy_port: "{{ oilscope_database_port }}"
+
+    - role: oilscope.platform.compose_project
+      vars:
+        compose_project_config_path: "{{ project_config_path }}"
+        compose_project_workload: >-
+          {{ 'queue'
+             if (oilscope_role == 'database' and oilscope_database_managed)
+             else oilscope_role }}
+
+    - role: oilscope.platform.resolve_secrets
+      vars:
+        resolve_secrets_config_path: "{{ project_config_path }}"
+
+    - role: oilscope.platform.registry_auth
+      vars:
+        registry_auth_registry: >-
+          {{ compose_project_config.registry.repository
+             | regex_replace('/.*$', '') }}
+        registry_auth_username: >-
+          {{ compose_project_config.registry.username | default('') }}
+        registry_auth_token: >-
+          {{ resolve_secrets_result.GHCR_TOKEN | default('') }}
+
+    - role: oilscope.platform.database
+      when: oilscope_role == 'database' and not oilscope_database_managed
+      vars:
+        database_postgres_image: >-
+          {{
+            compose_project_config.registry.repository
+            ~ '/database:'
+            ~ compose_project_config.registry.image_sha
+          }}
+        database_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"
+
+    - role: oilscope.platform.message_queue
+      when: oilscope_role == 'database' and oilscope_database_managed
+      vars:
+        message_queue_user: "{{ oilscope_queue_user }}"
+        message_queue_password: "{{ resolve_secrets_result.RABBITMQ_PASSWORD }}"
+        message_queue_vhost: "{{ oilscope_queue_vhost }}"
+        message_queue_host_port: "{{ oilscope_queue_port }}"
+        message_queue_database_host: "{{ oilscope_database_host }}"
+        message_queue_database_port: "{{ oilscope_database_port }}"
+        message_queue_database_name: "{{ oilscope_database_name }}"
+        message_queue_database_user: "{{ oilscope_database_user }}"
+        message_queue_database_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"
+        message_queue_database_sslmode: "{{ oilscope_database_sslmode }}"
+
+    - role: oilscope.platform.history
+      when: oilscope_role == 'history'
+      vars:
+        history_database_host: "{{ oilscope_database_host }}"
+        history_compose_environment:
+          QUEUE_BACKEND: "{{ oilscope_queue_backend }}"
+          RABBITMQ_USER: "{{ oilscope_queue_user }}"
+          RABBITMQ_PASSWORD: "{{ resolve_secrets_result.RABBITMQ_PASSWORD | default('') }}"
+          RABBITMQ_HOST: "{{ oilscope_queue_host }}"
+          RABBITMQ_PORT: "{{ oilscope_queue_port }}"
+          RABBITMQ_VHOST: "{{ oilscope_queue_vhost }}"
+          DATABASE_SSLMODE: "{{ oilscope_database_sslmode }}"
+        history_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"
+
+    - role: oilscope.platform.fetcher
+      when: oilscope_role == 'fetcher'
+      vars:
+        fetcher_database_host: "{{ oilscope_database_host }}"
+        fetcher_compose_environment:
+          QUEUE_BACKEND: "{{ oilscope_queue_backend }}"
+          RABBITMQ_USER: "{{ oilscope_queue_user }}"
+          RABBITMQ_PASSWORD: "{{ resolve_secrets_result.RABBITMQ_PASSWORD | default('') }}"
+          RABBITMQ_HOST: "{{ oilscope_queue_host }}"
+          RABBITMQ_PORT: "{{ oilscope_queue_port }}"
+          RABBITMQ_VHOST: "{{ oilscope_queue_vhost }}"
+          DATABASE_SSLMODE: "{{ oilscope_database_sslmode }}"
+        fetcher_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"
+        fetcher_oilpriceapi_key: "{{ resolve_secrets_result.OILPRICEAPI_KEY }}"
+
+    - role: oilscope.platform.compose_project
+      when: oilscope_role == 'ui'
+      vars:
+        compose_project_config_path: "{{ project_config_path }}"
+        compose_project_dir: /opt/oilscope/proxy
+        compose_project_workload: proxy
+
+    - role: oilscope.platform.edge_proxy
+      when: oilscope_role == 'ui'
+
+    - role: oilscope.platform.ui
+      when: oilscope_role == 'ui'
+      vars:
+        ui_database_host: "{{ oilscope_database_host }}"
+        ui_history_service_url: >-
+          http://{{ hostvars[groups['history'][0]].internal_ip }}:8001
+        ui_compose_environment:
+          DATABASE_SSLMODE: "{{ oilscope_database_sslmode }}"
+        ui_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"

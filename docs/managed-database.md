@@ -151,6 +151,25 @@ before any workload connects. `terraform output database` names the host, the
 port, the database, the application role and the container holding its password
 - never the password.
 
+The workloads are deployed by one play over the whole `workloads` group rather
+than one play per machine, so the parts every machine needs - the baseline
+packages, Docker, the connector, the image pulls - happen on all of them at
+once instead of four times in a row. Ordering that actually matters is kept by
+position: the broker and the migrations are roles earlier in the same play than
+the services that depend on them, and a play runs each role to completion on
+every host before starting the next.
+
+To work on one machine, limit the run rather than reaching for a playbook of
+its own:
+
+```bash
+ansible-playbook oilscope.platform.deploy_workloads \
+  -i infrastructure/ansible/inventory/oilscope.yml \
+  -e project_config_path=/absolute/path/project-config.json \
+  --limit history
+```
+
+
 ## The extension the migrations do need
 
 `pgcrypto` and `hstore` are present on both managed services. `pg_cron` is not,
