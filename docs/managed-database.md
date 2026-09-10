@@ -179,6 +179,21 @@ parameter group carrying `shared_preload_libraries = pg_cron` on RDS. Both also
 set `cron.database_name` to the application database, because the default is
 `postgres` and the job would otherwise be scheduled in the wrong place.
 
+## What the account plan can refuse
+
+`backup_retention_days` is passed straight through to both clouds, and AWS
+rejects it outright on a free-plan account:
+
+```
+FreeTierRestrictionError: The specified backup retention period exceeds
+the maximum available to free tier customers.
+```
+
+Nothing is wrong with the configuration - the limit belongs to the account,
+not the code - so the fix is to ask for less rather than to work around it.
+One day of retention is accepted, and keeps automated backups and
+point-in-time recovery switched on in both clouds; zero turns them off.
+
 ## Switching back
 
 Set `managed` to false and apply. Terraform destroys the instance, the subnets
