@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+ui_url_credentials:
+  POSTGRES_PASSWORD_URL: >-
+    {{ ui_postgres_password | urlencode | replace('/', '%2F') }}
+
 ui_runtime_environment: >-
   {{
     ui_compose_environment
@@ -9,4 +13,5 @@ ui_runtime_environment: >-
       'DATABASE_HOST': ui_database_host,
       'HISTORY_SERVICE_URL': ui_history_service_url
     })
+    | combine(ui_url_credentials)
   }}

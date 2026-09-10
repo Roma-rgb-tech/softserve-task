@@ -194,6 +194,26 @@ not the code - so the fix is to ask for less rather than to work around it.
 One day of retention is accepted, and keeps automated backups and
 point-in-time recovery switched on in both clouds; zero turns them off.
 
+## A password that has to survive a URL
+
+The services are handed a connection string, and a connection string puts the
+password between a colon and an at sign - a place where several characters mean
+something other than themselves. AWS generates the master password itself, from
+a wider alphabet than the one this project used to generate, and the first one
+it produced could not be parsed:
+
+```
+cannot parse `postgres://oil_tracker:xxxxxx@...`:
+failed to parse as URL (net/url: invalid userinfo)
+```
+
+Go refuses such a string outright; Python happened to accept it, which is luck
+rather than correctness. So the password reaches the Compose file twice, under
+two names: `POSTGRES_PASSWORD` for the places that want the value itself - the
+PostgreSQL container, the migration job, which read it through `PGPASSWORD` -
+and `POSTGRES_PASSWORD_URL`, percent-encoded, for the places that build a URL
+out of it. The same split applies to `RABBITMQ_PASSWORD`.
+
 ## Switching back
 
 Set `managed` to false and apply. Terraform destroys the instance, the subnets

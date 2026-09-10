@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+history_url_credentials:
+  POSTGRES_PASSWORD_URL: >-
+    {{ history_postgres_password | urlencode | replace('/', '%2F') }}
+  RABBITMQ_PASSWORD_URL: >-
+    {{ history_compose_environment.RABBITMQ_PASSWORD
+       | default('') | urlencode | replace('/', '%2F') }}
+
 history_runtime_environment: >-
   {{
     history_compose_environment
@@ -8,4 +15,5 @@ history_runtime_environment: >-
       'POSTGRES_PASSWORD': history_postgres_password,
       'DATABASE_HOST': history_database_host
     })
+    | combine(history_url_credentials)
   }}

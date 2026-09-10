@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+fetcher_url_credentials:
+  POSTGRES_PASSWORD_URL: >-
+    {{ fetcher_postgres_password | urlencode | replace('/', '%2F') }}
+  RABBITMQ_PASSWORD_URL: >-
+    {{ fetcher_compose_environment.RABBITMQ_PASSWORD
+       | default('') | urlencode | replace('/', '%2F') }}
+
 fetcher_runtime_environment: >-
   {{
     fetcher_compose_environment
@@ -13,4 +20,5 @@ fetcher_runtime_environment: >-
       'FETCHER_BIND_ADDRESS': fetcher_bind_address | string,
       'FETCHER_HOST_PORT': fetcher_host_port | string
     })
+    | combine(fetcher_url_credentials)
   }}
