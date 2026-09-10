@@ -8,15 +8,14 @@ locals {
     merge(local.gauge, { title = "Disk used, %", metric = "agent.googleapis.com/disk/percent_used", extra = local.used_disk }),
     merge(local.gauge, { title = "Uptime", metric = "compute.googleapis.com/instance/uptime", extra = "" }),
     merge(local.delta, { title = "Network received", metric = "compute.googleapis.com/instance/network/received_bytes_count", extra = "" }),
-    merge(local.delta, { title = "5xx responses", metric = "logging.googleapis.com/user/${local.prefix}-http-5xx", extra = "" }),
   ]
 
   tiles = [
     for index, chart in local.charts : {
-      width  = 6
+      width  = 4
       height = 4
-      xPos   = index % 2 * 6
-      yPos   = floor(index / 2) * 4
+      xPos   = index % 3 * 4
+      yPos   = floor(index / 3) * 4
 
       widget = {
         title = chart.title

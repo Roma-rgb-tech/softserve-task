@@ -50,3 +50,7 @@ infrastructure/ansible/inventory/oilscope.gcp.yml
 # collection belongs in git; anything Galaxy installs beside it does not.
 .ansible/collections/ansible_collections/*
 !.ansible/collections/ansible_collections/oilscope
+
+# Files this repository is not the home for: presentations, exports and other
+# artefacts that happen to be written into the working tree.
+Claude outputs/

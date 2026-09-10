@@ -40,6 +40,17 @@ Every alert policy carries a `documentation` block and every alarm an
 `alarm_description`, so the mail that arrives says what the condition means and
 where to look next, rather than only which threshold was crossed.
 
+### What the dashboard does not show
+
+Availability and 5xx responses are watched, but they are not drawn. Both are
+zero almost all of the time, and a chart that is a flat line at zero teaches a
+reader to stop looking at it - while the one moment it stops being zero is
+exactly the moment nobody is looking at a dashboard anyway. Those two belong to
+the alerts, which arrive whether or not anyone is watching.
+
+What remains on the dashboard is the three signals a person actually reads
+while working: CPU, memory and disk.
+
 ### Availability is the absence of a signal
 
 A VM that has crashed does not report a high value; it reports nothing. So the
