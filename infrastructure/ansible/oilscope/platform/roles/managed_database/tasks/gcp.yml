@@ -13,7 +13,7 @@
       project configuration.
   when: managed_database_project | length == 0
 
-- name: Ask GCP which instance carries this deployment's name
+- name: Ask GCP which instances carry this deployment's name
   ansible.builtin.command:
     argv:
       - "{{ managed_database_gcloud }}"
@@ -21,24 +21,38 @@
       - instances
       - list
       - "--project={{ managed_database_project }}"
-      - "--filter=name ~ ^{{ managed_database_instance }}"
-      - "--sort-by=name"
+      - "--filter=name ~ ^{{ managed_database_instance }}-"
       - "--format=value(name)"
   register: managed_database_found
   changed_when: false
   check_mode: false
 
+- name: Collect what the search returned
+  ansible.builtin.set_fact:
+    managed_database_candidates: >-
+      {{ (managed_database_found.stdout | trim).splitlines()
+         | map('trim') | select() | list }}
+
 - name: Refuse to reconcile an instance that is not there
   ansible.builtin.fail:
     msg: >-
-      No Cloud SQL instance whose name starts with {{ managed_database_instance }}
-      exists in {{ managed_database_project }}. Run terraform apply first.
-  when: (managed_database_found.stdout | trim) | length == 0
+      No Cloud SQL instance named {{ managed_database_instance }}-* exists in
+      {{ managed_database_project }}. Run terraform apply first.
+  when: managed_database_candidates | length == 0
+
+- name: Refuse to choose between instances
+  ansible.builtin.fail:
+    msg: >-
+      {{ managed_database_candidates | length }} Cloud SQL instances match
+      {{ managed_database_instance }}-* in {{ managed_database_project }}:
+      {{ managed_database_candidates | join(', ') }}. Only one belongs to this
+      deployment; the rest are orphans a destroy left behind. Compare them with
+      the instance in the Terraform state and delete the others.
+  when: managed_database_candidates | length > 1
 
 - name: Use the name the instance actually has
   ansible.builtin.set_fact:
-    managed_database_instance: >-
-      {{ (managed_database_found.stdout | trim).splitlines() | first }}
+    managed_database_instance: "{{ managed_database_candidates | first }}"
 
 - name: Read the application password from the project secret
   ansible.builtin.command:
