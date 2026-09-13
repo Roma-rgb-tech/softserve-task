@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+edge_proxy_runtime_environment:
+  CF_DNS_API_TOKEN: "{{ edge_proxy_cloudflare_dns_token }}"

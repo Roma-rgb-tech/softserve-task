@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Restart Traefik
+  environment: "{{ edge_proxy_runtime_environment }}"
+  no_log: true
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ edge_proxy_compose_project_name }}"
+      - --file
+      - "{{ edge_proxy_compose_file }}"
+      - restart
+      - traefik
+    chdir: "{{ edge_proxy_dir }}"
+  changed_when: true

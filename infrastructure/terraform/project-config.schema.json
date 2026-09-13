@@ -26,6 +26,11 @@
         "prod"
       ]
     },
+    "workspace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Terraform workspace this configuration belongs to. When set, an apply from any other workspace is refused before a plan is built, so one environment cannot be renamed on top of another. Omit it and no workspace check is made."
+    },
     "name_prefix": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$"
@@ -592,6 +597,11 @@
             "acme_email": {
               "type": "string",
               "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            },
+            "cloudflare_zone_id": {
+              "description": "Zone ID the hostname's DNS lives in. Leave unset to manage the record yourself; set it and Terraform creates a DNS-only (unproxied) A record pointing at this workload's public IP, which the ACME TLS-ALPN-01 challenge needs to reach the VM directly.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
             }
           }
         },

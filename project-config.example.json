@@ -70,6 +70,7 @@
     }
   },
   "environment": "dev",
+  "workspace": "default",
   "name_prefix": "oilscope",
   "gcp": {
     "project_id": "example-project-12345",
@@ -239,11 +240,13 @@
       ],
       "secret_mappings": {
         "POSTGRES_PASSWORD": "example-db-password",
-        "GHCR_TOKEN": "example-ghcr-token"
+        "GHCR_TOKEN": "example-ghcr-token",
+        "CF_DNS_API_TOKEN": "example-cloudflare-dns-token"
       },
       "public_endpoint": {
         "hostname": "oilscope.example.com",
-        "acme_email": "example-operator@example.com"
+        "acme_email": "example-operator@example.com",
+        "cloudflare_zone_id": "0123456789abcdef0123456789abcdef"
       }
     }
   },

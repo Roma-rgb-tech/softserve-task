@@ -8,6 +8,7 @@
 # Store them once:
 #   security add-generic-password -s oilscope-ghcr        -a "$USER" -w
 #   security add-generic-password -s oilscope-oilpriceapi -a "$USER" -w
+#   security add-generic-password -s oilscope-cloudflare  -a "$USER" -w
 #
 # On Linux the equivalent is `secret-tool store` / `secret-tool lookup`.
 
@@ -16,10 +17,13 @@
 # effect, and a run silently uses the last installed copy until it does.
 export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
 
-export OILSCOPE_PROJECT_CONFIG="$HOME/configs/oilscope/dev.json"
+export OILSCOPE_PROJECT_CONFIG="$HOME/configs/oilscope/oilscope.json"
 export OILSCOPE_SSH_KEY="$HOME/.ssh/id_ed25519"
 
 # Only a brand new environment needs these: once the containers hold a value,
 # the deployment leaves them alone and asks for nothing.
 export GHCR_TOKEN="$(security find-generic-password -s oilscope-ghcr -w 2>/dev/null)"
 export OILPRICEAPI_KEY="$(security find-generic-password -s oilscope-oilpriceapi -w 2>/dev/null)"
+
+export TF_VAR_cloudflare_api_token="$(security find-generic-password -s oilscope-cloudflare -w 2>/dev/null)"
+export CF_DNS_API_TOKEN="$TF_VAR_cloudflare_api_token"
