@@ -1,7 +1,13 @@
+resource "random_id" "instance" {
+  count = local.enabled
+
+  byte_length = 4
+}
+
 resource "google_sql_database_instance" "main" {
   count = local.enabled
 
-  name             = "${local.prefix}-database"
+  name             = "${local.prefix}-database-${random_id.instance[0].hex}"
   region           = local.region
   database_version = "POSTGRES_${local.settings.engine_version}"
 

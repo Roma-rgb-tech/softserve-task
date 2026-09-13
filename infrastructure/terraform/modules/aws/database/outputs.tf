@@ -6,6 +6,7 @@ output "database" {
     database         = local.settings.database_name
     username         = local.settings.username
     connector        = null
+    instance         = aws_db_instance.main[0].identifier
     connection_name  = aws_db_instance.main[0].identifier
     password_secret  = one(aws_db_instance.main[0].master_user_secret[*].secret_arn)
     password_managed = true

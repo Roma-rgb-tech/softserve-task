@@ -214,6 +214,39 @@ PostgreSQL container, the migration job, which read it through `PGPASSWORD` -
 and `POSTGRES_PASSWORD_URL`, percent-encoded, for the places that build a URL
 out of it. The same split applies to `RABBITMQ_PASSWORD`.
 
+## A name that can be created twice
+
+Google keeps a deleted Cloud SQL instance's name reserved for about a week.
+Nothing else in this deployment behaves that way: a VM, a subnet or a DNS zone
+can be destroyed and created again under the same name in the same minute. One
+resource with a week-long memory is enough to make `destroy` followed by
+`apply` fail, which is the opposite of what the rest of the configuration
+promises.
+
+So the instance is the one resource here that does not take its name from the
+environment alone:
+
+```hcl
+resource "random_id" "instance" {
+  count = local.enabled
+
+  byte_length = 4
+}
+
+name = "${local.prefix}-database-${random_id.instance[0].hex}"
+```
+
+The suffix lives in the state, so repeated applies leave the instance alone; it
+is regenerated only when the instance is actually recreated, which is exactly
+when a fresh name is needed. Everything around the instance - the Private
+Service Connect address, the forwarding rule, the private DNS zone - keeps its
+predictable name, because none of them reserve anything.
+
+The cost is that the name is no longer knowable from the configuration, so
+nothing may derive it. Terraform publishes it as `database.instance`, and the
+`managed_database` role asks Cloud SQL for the instance whose name begins with
+the deployment's prefix rather than assuming the rest.
+
 ## Switching back
 
 Set `managed` to false and apply. Terraform destroys the instance, the subnets

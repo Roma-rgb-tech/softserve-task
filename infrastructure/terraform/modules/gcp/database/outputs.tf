@@ -5,7 +5,8 @@ output "database" {
     port             = var.config.service_ports.postgresql
     database         = local.settings.database_name
     username         = local.settings.username
-    connector        = "cloud-sql-auth-proxy"
+    connector        = "private-service-connect"
+    instance         = google_sql_database_instance.main[0].name
     connection_name  = google_sql_database_instance.main[0].connection_name
     password_secret  = lookup(local.settings, "password_secret", null)
     password_managed = false

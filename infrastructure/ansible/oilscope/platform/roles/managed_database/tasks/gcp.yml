@@ -13,6 +13,33 @@
       project configuration.
   when: managed_database_project | length == 0
 
+- name: Ask GCP which instance carries this deployment's name
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_gcloud }}"
+      - sql
+      - instances
+      - list
+      - "--project={{ managed_database_project }}"
+      - "--filter=name ~ ^{{ managed_database_instance }}"
+      - "--sort-by=name"
+      - "--format=value(name)"
+  register: managed_database_found
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to reconcile an instance that is not there
+  ansible.builtin.fail:
+    msg: >-
+      No Cloud SQL instance whose name starts with {{ managed_database_instance }}
+      exists in {{ managed_database_project }}. Run terraform apply first.
+  when: (managed_database_found.stdout | trim) | length == 0
+
+- name: Use the name the instance actually has
+  ansible.builtin.set_fact:
+    managed_database_instance: >-
+      {{ (managed_database_found.stdout | trim).splitlines() | first }}
+
 - name: Read the application password from the project secret
   ansible.builtin.command:
     argv:

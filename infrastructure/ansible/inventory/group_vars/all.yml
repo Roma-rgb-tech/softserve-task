@@ -17,7 +17,8 @@ ansible_ssh_private_key_file: >-
 oilscope_known_hosts: >-
   {{ lookup('ansible.builtin.env', 'OILSCOPE_KNOWN_HOSTS')
      | default(lookup('ansible.builtin.env', 'HOME')
-               ~ '/.ssh/known_hosts.oilscope', true) }}
+               ~ '/.ssh/known_hosts.oilscope-'
+               ~ (project_config_path | basename | splitext | first), true) }}
 
 oilscope_ssh_base_args: >-
   -o StrictHostKeyChecking=accept-new
@@ -50,9 +51,6 @@ oilscope_gcp_region: >-
 oilscope_aws_region: >-
   {{ lookup('ansible.builtin.env', 'AWS_REGION')
      | default(oilscope_project_config.aws.regions | default([]) | first | default(''), true) }}
-
-oilscope_database_connection_name: >-
-  {{ oilscope_gcp_project }}:{{ oilscope_gcp_region }}:{{ oilscope_database_instance }}
 
 oilscope_queue_backend: "{{ 'amqp' if oilscope_database_managed else 'pgmq' }}"
 oilscope_queue_user: "{{ oilscope_database_settings.queue_username | default('oil_tracker') }}"
