@@ -5,6 +5,27 @@
   become: true
   gather_facts: true
   any_errors_fatal: true
+
+  pre_tasks:
+    - name: Refuse to run against a stand the inventory did not describe
+      ansible.builtin.assert:
+        that:
+          - oilscope_inventory_config | length == 0
+            or (oilscope_inventory_config | realpath) == (project_config_path | realpath)
+        fail_msg: >-
+          The inventory was built from {{ oilscope_inventory_config }} but the
+          playbook was given {{ project_config_path }}. The inventory plugin
+          reads $OILSCOPE_PROJECT_CONFIG and -e feeds only the playbook, so
+          these two select different stands. Export the matching
+          OILSCOPE_PROJECT_CONFIG before running.
+        quiet: true
+      vars:
+        oilscope_inventory_config: >-
+          {{ lookup('ansible.builtin.env', 'OILSCOPE_PROJECT_CONFIG') }}
+      run_once: true
+      become: false
+      delegate_to: localhost
+
   roles:
     - role: oilscope.platform.monitoring_agent
       vars:

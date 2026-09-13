@@ -7,19 +7,32 @@
   force_handlers: true
   any_errors_fatal: true
 
+  pre_tasks:
+    - name: Refuse to run against a stand the inventory did not describe
+      ansible.builtin.assert:
+        that:
+          - oilscope_inventory_config | length == 0
+            or (oilscope_inventory_config | realpath) == (project_config_path | realpath)
+        fail_msg: >-
+          The inventory was built from {{ oilscope_inventory_config }} but the
+          playbook was given {{ project_config_path }}. The inventory plugin
+          reads $OILSCOPE_PROJECT_CONFIG and -e feeds only the playbook, so
+          these two select different stands. Export the matching
+          OILSCOPE_PROJECT_CONFIG before running.
+        quiet: true
+      vars:
+        oilscope_inventory_config: >-
+          {{ lookup('ansible.builtin.env', 'OILSCOPE_PROJECT_CONFIG') }}
+      run_once: true
+      become: false
+      delegate_to: localhost
+
   roles:
     - role: oilscope.platform.host_baseline
 
     - role: oilscope.platform.docker_engine
 
     - role: oilscope.platform.database_endpoint
-
-    - role: oilscope.platform.cloudsql_proxy
-      when: oilscope_database_managed and oilscope_cloud == 'gcp'
-      vars:
-        cloudsql_proxy_connection_name: "{{ oilscope_database_connection_name }}"
-        cloudsql_proxy_address: "{{ internal_ip }}"
-        cloudsql_proxy_port: "{{ oilscope_database_port }}"
 
     - role: oilscope.platform.compose_project
       vars:
@@ -106,6 +119,8 @@
 
     - role: oilscope.platform.edge_proxy
       when: oilscope_role == 'ui'
+      vars:
+        edge_proxy_cloudflare_dns_token: "{{ resolve_secrets_result.CF_DNS_API_TOKEN | default('') }}"
 
     - role: oilscope.platform.ui
       when: oilscope_role == 'ui'
