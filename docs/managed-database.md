@@ -147,9 +147,7 @@ ansible-playbook oilscope.platform.site \
 ```
 
 `site.yml` reconciles the credentials after the secret containers are filled and
-before any workload connects. `terraform output database` names the host, the
-port, the database, the application role and the container holding its password
-- never the password.
+before any workload connects.
 
 The workloads are deployed by one play over the whole `workloads` group rather
 than one play per machine, so the parts every machine needs - the baseline
