@@ -15,3 +15,4 @@
       - traefik
     chdir: "{{ edge_proxy_dir }}"
   changed_when: true
+  when: edge_proxy_running.stdout | default('') | trim | length > 0

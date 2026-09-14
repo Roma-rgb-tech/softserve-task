@@ -13,6 +13,18 @@
   when: edge_proxy_network_check.rc != 0
   changed_when: true
 
+- name: Look for a Traefik that is already running
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --quiet
+      - --filter
+      - "name={{ edge_proxy_compose_project_name }}-traefik"
+  register: edge_proxy_running
+  changed_when: false
+  failed_when: false
+
 - name: Create the dynamic configuration directory
   ansible.builtin.file:
     path: "{{ edge_proxy_dir }}/dynamic"
