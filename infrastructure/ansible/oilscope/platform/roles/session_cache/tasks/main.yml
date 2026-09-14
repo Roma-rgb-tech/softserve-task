@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Refuse to start a cache without a password
+  ansible.builtin.fail:
+    msg: >-
+      session_cache_password is empty. Redis holds the UI sessions and is
+      reachable from the workload subnet, so it needs a credential of its own.
+  when: session_cache_password | length == 0
+
+- name: Start Redis
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ session_cache_compose_project_name }}"
+      - --file
+      - "{{ session_cache_compose_file }}"
+      - up
+      - --detach
+      - --no-deps
+      - "{{ session_cache_service }}"
+  args:
+    chdir: "{{ session_cache_dir }}"
+  environment: "{{ session_cache_runtime_environment }}"
+  register: session_cache_compose_up
+  changed_when: >-
+    'Created' in session_cache_compose_up.stderr or
+    'Started' in session_cache_compose_up.stderr or
+    'Recreated' in session_cache_compose_up.stderr
+  no_log: true
+
+- name: Get the Redis container ID
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ session_cache_compose_project_name }}"
+      - --file
+      - "{{ session_cache_compose_file }}"
+      - ps
+      - --quiet
+      - "{{ session_cache_service }}"
+  args:
+    chdir: "{{ session_cache_dir }}"
+  environment: "{{ session_cache_runtime_environment }}"
+  register: session_cache_container
+  changed_when: false
+  failed_when: session_cache_container.stdout | trim | length == 0
+  no_log: true
+
+- name: Wait for Redis to become healthy
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}missing{{ '{{' }}end{{ '}}' }}"
+      - "{{ session_cache_container.stdout | trim }}"
+  register: session_cache_health
+  changed_when: false
+  retries: "{{ session_cache_health_retries }}"
+  delay: "{{ session_cache_health_delay }}"
+  until: session_cache_health.stdout | trim == 'healthy'

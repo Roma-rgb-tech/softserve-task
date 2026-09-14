@@ -9,8 +9,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from psycopg import Error as PostgreSQLError
 
+from .redis_session_store import RedisSessionStore
 from .session_store import PostgreSQLSessionStore
 from .sessions import SessionPreferences, resolve_session_id
 
@@ -28,6 +28,16 @@ DATABASE_URL = os.getenv(
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "petroscope_session")
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "2592000"))
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_BACKEND = os.getenv("SESSION_BACKEND", "postgresql").strip().lower()
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+
+def create_session_store() -> RedisSessionStore | PostgreSQLSessionStore:
+    if SESSION_BACKEND == "redis":
+        return RedisSessionStore(REDIS_URL, SESSION_TTL_SECONDS)
+    if SESSION_BACKEND == "postgresql":
+        return PostgreSQLSessionStore(DATABASE_URL, SESSION_TTL_SECONDS)
+    raise ValueError(f"SESSION_BACKEND must be redis or postgresql, not {SESSION_BACKEND!r}")
 
 
 @asynccontextmanager
@@ -44,7 +54,7 @@ app = FastAPI(
     version="3.0.0",
     lifespan=lifespan,
 )
-app.state.session_store = PostgreSQLSessionStore(DATABASE_URL, SESSION_TTL_SECONDS)
+app.state.session_store = create_session_store()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -73,16 +83,20 @@ async def health(request: Request) -> dict[str, str]:
         upstream.raise_for_status()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail="History Service is unavailable") from exc
+    store = request.app.state.session_store
     try:
-        sessions_ready = await request.app.state.session_store.is_ready()
-    except PostgreSQLError as exc:
+        sessions_ready = await store.is_ready()
+    except store.errors as exc:
         raise HTTPException(
             status_code=503,
-            detail="PostgreSQL session persistence is unavailable",
+            detail=f"{store.backend} session persistence is unavailable",
         ) from exc
     if not sessions_ready:
-        raise HTTPException(status_code=503, detail="PostgreSQL session persistence is not ready")
-    return {"status": "ok", "history": "connected", "sessions": "postgresql"}
+        raise HTTPException(
+            status_code=503,
+            detail=f"{store.backend} session persistence is not ready",
+        )
+    return {"status": "ok", "history": "connected", "sessions": store.backend}
 
 
 def _set_session_cookie(response: Response, session_id: str) -> None:
@@ -104,12 +118,13 @@ def _set_session_cookie(response: Response, session_id: str) -> None:
 )
 async def get_session_preferences(request: Request, response: Response) -> SessionPreferences:
     session_id, _ = resolve_session_id(request.cookies.get(SESSION_COOKIE_NAME))
+    store = request.app.state.session_store
     try:
-        preferences = await request.app.state.session_store.get(session_id)
-    except PostgreSQLError as exc:
+        preferences = await store.get(session_id)
+    except store.errors as exc:
         raise HTTPException(
             status_code=503,
-            detail="PostgreSQL session persistence is unavailable",
+            detail=f"{store.backend} session persistence is unavailable",
         ) from exc
     _set_session_cookie(response, session_id)
     return preferences
@@ -126,12 +141,13 @@ async def update_session_preferences(
     response: Response,
 ) -> SessionPreferences:
     session_id, _ = resolve_session_id(request.cookies.get(SESSION_COOKIE_NAME))
+    store = request.app.state.session_store
     try:
-        await request.app.state.session_store.update(session_id, payload)
-    except PostgreSQLError as exc:
+        await store.update(session_id, payload)
+    except store.errors as exc:
         raise HTTPException(
             status_code=503,
-            detail="PostgreSQL session persistence is unavailable",
+            detail=f"{store.backend} session persistence is unavailable",
         ) from exc
     _set_session_cookie(response, session_id)
     return payload

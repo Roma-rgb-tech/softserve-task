@@ -387,6 +387,12 @@ Two honest caveats:
   Terraform configuration, plan or state.
   See [`docs/managed-database.md`](docs/managed-database.md).
 
+- **UI sessions are one flag.** `sessions.backend` keeps the visitor
+  preferences either in the application database or in a Redis container on the
+  infrastructure machine. The same image serves both and `/health` says which
+  one answered.
+  See [`docs/sessions.md`](docs/sessions.md).
+
 - **Machines configure themselves at first boot.** Terraform renders one
   cloud-init document per VM and hands it to the cloud as user data. It is what
   formats and mounts the data disks a VM declares in `extra_disks`.

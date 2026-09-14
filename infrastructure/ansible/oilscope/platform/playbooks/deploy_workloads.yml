@@ -67,6 +67,19 @@
           }}
         database_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"
 
+    - role: oilscope.platform.compose_project
+      when: oilscope_role == 'database' and oilscope_sessions_backend == 'redis'
+      vars:
+        compose_project_config_path: "{{ project_config_path }}"
+        compose_project_dir: /opt/oilscope/cache
+        compose_project_workload: cache
+
+    - role: oilscope.platform.session_cache
+      when: oilscope_role == 'database' and oilscope_sessions_backend == 'redis'
+      vars:
+        session_cache_password: "{{ resolve_secrets_result.REDIS_PASSWORD }}"
+        session_cache_host_port: "{{ oilscope_sessions_port }}"
+
     - role: oilscope.platform.message_queue
       when: oilscope_role == 'database' and oilscope_database_managed
       vars:
@@ -130,4 +143,8 @@
           http://{{ hostvars[groups['history'][0]].internal_ip }}:8001
         ui_compose_environment:
           DATABASE_SSLMODE: "{{ oilscope_database_sslmode }}"
+          SESSION_BACKEND: "{{ oilscope_sessions_backend }}"
+          REDIS_HOST: "{{ oilscope_sessions_host }}"
+          REDIS_PORT: "{{ oilscope_sessions_port }}"
         ui_postgres_password: "{{ resolve_secrets_result.POSTGRES_PASSWORD }}"
+        ui_redis_password: "{{ resolve_secrets_result.REDIS_PASSWORD | default('') }}"

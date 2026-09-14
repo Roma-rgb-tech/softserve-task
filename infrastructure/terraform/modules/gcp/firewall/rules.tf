@@ -66,6 +66,14 @@ locals {
       target_tags   = [local.tags.infra]
       allow         = [{ protocol = "tcp", ports = [tostring(lookup(var.config.service_ports, "amqp", 5672))] }]
     }
+
+    "redis" = {
+      enabled       = local.enabled && local.cached
+      source_ranges = null
+      source_tags   = [local.tags.ui]
+      target_tags   = [local.tags.infra]
+      allow         = [{ protocol = "tcp", ports = [tostring(lookup(var.config.service_ports, "redis", 6379))] }]
+    }
   }
 
   active_rules = { for name, rule in local.rules : name => rule if rule.enabled }

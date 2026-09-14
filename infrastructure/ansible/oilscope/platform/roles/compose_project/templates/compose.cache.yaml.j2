@@ -1,0 +1,35 @@
+name: oilscope-cache
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:8.2-alpine}
+    pull_policy: ${REDIS_PULL_POLICY:-missing}
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - --appendonly
+      - "yes"
+      - --maxmemory-policy
+      - volatile-ttl
+    environment:
+      TZ: UTC
+    ports:
+      - "${CACHE_BIND_ADDRESS:-0.0.0.0}:${CACHE_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    stop_grace_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  redis_data:

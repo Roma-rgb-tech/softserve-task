@@ -19,8 +19,9 @@ locals {
     for vm in local.bastion_vms : lookup(vm, "ssh_bootstrap", false)
   ]) && local.bastion_port != 22
 
-  ports     = var.config.service_ports
-  amqp_port = lookup(var.config.service_ports, "amqp", 5672)
+  ports      = var.config.service_ports
+  amqp_port  = lookup(var.config.service_ports, "amqp", 5672)
+  redis_port = lookup(var.config.service_ports, "redis", 6379)
 
   ingress_rules = merge(
     {
@@ -69,6 +70,14 @@ locals {
         group       = "infra", cidr_ipv4 = null, source_group = role
         from_port   = local.amqp_port, to_port = local.amqp_port
         description = "AMQP from ${role}"
+      }
+    },
+    {
+      for role in local.enabled && local.cached ? ["ui"] : [] :
+      "redis/${role}" => {
+        group       = "infra", cidr_ipv4 = null, source_group = role
+        from_port   = local.redis_port, to_port = local.redis_port
+        description = "Redis sessions from ${role}"
       }
     },
     {

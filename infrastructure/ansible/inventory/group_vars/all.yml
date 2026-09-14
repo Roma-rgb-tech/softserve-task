@@ -52,6 +52,20 @@ oilscope_aws_region: >-
   {{ lookup('ansible.builtin.env', 'AWS_REGION')
      | default(oilscope_project_config.aws.regions | default([]) | first | default(''), true) }}
 
+oilscope_sessions_settings: "{{ oilscope_project_config.sessions | default({}) }}"
+
+oilscope_sessions_backend: >-
+  {{ oilscope_sessions_settings.backend | default('postgresql') }}
+
+oilscope_sessions_password_secret: >-
+  {{ oilscope_sessions_settings.password_secret | default('') }}
+
+oilscope_sessions_port: "{{ oilscope_project_config.service_ports.redis | default(6379) }}"
+
+oilscope_sessions_host: >-
+  {{ hostvars[groups['database'][0]].internal_ip
+     if (groups['database'] | default([]) | length) > 0 else '' }}
+
 oilscope_queue_backend: "{{ 'amqp' if oilscope_database_managed else 'pgmq' }}"
 oilscope_queue_user: "{{ oilscope_database_settings.queue_username | default('oil_tracker') }}"
 oilscope_queue_vhost: "{{ oilscope_database_settings.queue_vhost | default('oil_tracker') }}"

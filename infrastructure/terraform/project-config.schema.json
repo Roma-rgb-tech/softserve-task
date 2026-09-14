@@ -135,6 +135,12 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
+        },
+        "redis": {
+          "description": "Port Redis answers on. Used only when sessions.backend is redis.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
         }
       }
     },
@@ -452,6 +458,45 @@
               "password_secret",
               "queue_username",
               "queue_password_secret"
+            ]
+          }
+        }
+      ]
+    },
+    "sessions": {
+      "description": "Where the UI keeps its session preferences. Absent means postgresql, which needs the hstore, pgcrypto and pg_cron extensions in the application database.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "description": "postgresql keeps sessions in the application database; redis runs a container on the infrastructure machine and keeps them there.",
+          "type": "string",
+          "enum": [
+            "postgresql",
+            "redis"
+          ]
+        },
+        "password_secret": {
+          "description": "Secret container holding the Redis password. Required when backend is redis; the value never appears in this file.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "backend": {
+                "const": "redis"
+              }
+            },
+            "required": [
+              "backend"
+            ]
+          },
+          "then": {
+            "required": [
+              "password_secret"
             ]
           }
         }

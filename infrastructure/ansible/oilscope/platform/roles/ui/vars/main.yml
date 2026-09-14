@@ -3,6 +3,8 @@
 ui_url_credentials:
   POSTGRES_PASSWORD_URL: >-
     {{ ui_postgres_password | urlencode | replace('/', '%2F') }}
+  REDIS_PASSWORD_URL: >-
+    {{ ui_redis_password | urlencode | replace('/', '%2F') }}
 
 ui_runtime_environment: >-
   {{

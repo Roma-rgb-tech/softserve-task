@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from psycopg import AsyncConnection, ProgrammingError
+from psycopg import Error as PostgreSQLError
 from psycopg.types import TypeInfo
 from psycopg.types.hstore import register_hstore
 from pydantic import ValidationError
@@ -11,6 +12,9 @@ from .sessions import SessionPreferences
 
 
 class PostgreSQLSessionStore:
+    backend = "postgresql"
+    errors = (PostgreSQLError,)
+
     def __init__(self, database_url: str, ttl_seconds: int) -> None:
         self.database_url = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
         self.ttl_seconds = ttl_seconds

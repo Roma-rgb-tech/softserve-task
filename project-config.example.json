@@ -114,7 +114,8 @@
   "service_ports": {
     "history_api": 8001,
     "postgresql": 5432,
-    "amqp": 5672
+    "amqp": 5672,
+    "redis": 6379
   },
   "monitoring": {
     "alert_emails": [
@@ -136,7 +137,8 @@
   },
   "generated_secrets": [
     "example-db-password",
-    "oilscope-dev-queue-password"
+    "oilscope-dev-queue-password",
+    "oilscope-dev-redis-password"
   ],
   "vms": {
     "bastion": {
@@ -175,7 +177,8 @@
       "secret_mappings": {
         "POSTGRES_PASSWORD": "example-db-password",
         "GHCR_TOKEN": "example-ghcr-token",
-        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password"
+        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password",
+        "REDIS_PASSWORD": "oilscope-dev-redis-password"
       }
     },
     "history": {
@@ -241,7 +244,8 @@
       "secret_mappings": {
         "POSTGRES_PASSWORD": "example-db-password",
         "GHCR_TOKEN": "example-ghcr-token",
-        "CF_DNS_API_TOKEN": "example-cloudflare-dns-token"
+        "CF_DNS_API_TOKEN": "example-cloudflare-dns-token",
+        "REDIS_PASSWORD": "oilscope-dev-redis-password"
       },
       "public_endpoint": {
         "hostname": "oilscope.example.com",
@@ -264,5 +268,9 @@
     "queue_vhost": "oil_tracker",
     "queue_password_secret": "oilscope-dev-queue-password",
     "edition": "ENTERPRISE"
+  },
+  "sessions": {
+    "backend": "redis",
+    "password_secret": "oilscope-dev-redis-password"
   }
 }
