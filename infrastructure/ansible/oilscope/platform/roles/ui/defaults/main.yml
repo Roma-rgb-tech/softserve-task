@@ -9,6 +9,6 @@ ui_history_service_url: ""
 ui_compose_environment: {}
 ui_postgres_password: ""
 ui_redis_password: ""
-ui_health_retries: 30
-ui_health_delay: 2
+ui_health_retries: 40
+ui_health_delay: 3
 ui_docker_config_dir: /run/oilscope/docker-auth

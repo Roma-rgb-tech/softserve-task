@@ -75,4 +75,5 @@
   changed_when: false
   retries: "{{ ui_health_retries }}"
   delay: "{{ ui_health_delay }}"
-  until: ui_health.stdout | trim == 'healthy'
+  until: ui_health.stdout | trim in ['healthy', 'unhealthy']
+  failed_when: ui_health.stdout | trim == 'unhealthy'

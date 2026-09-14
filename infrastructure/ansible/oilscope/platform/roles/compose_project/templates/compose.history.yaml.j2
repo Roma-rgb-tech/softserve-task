@@ -34,10 +34,10 @@ services:
           assert data["database"] == "connected";
           assert data["pgmq_extension"] == "installed";
           assert data["pgmq_consumer"] == "ready"
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 20
-      start_period: 20s
+      retries: 12
+      start_period: 10s
     stop_grace_period: 20s
     security_opt:
       - no-new-privileges:true
