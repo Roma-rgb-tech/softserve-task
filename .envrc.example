@@ -18,6 +18,7 @@
 export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
 
 export OILSCOPE_PROJECT_CONFIG="$HOME/configs/oilscope/oilscope.json"
+export TF_VAR_project_config_path="$OILSCOPE_PROJECT_CONFIG"
 export OILSCOPE_SSH_KEY="$HOME/.ssh/id_ed25519"
 
 # Only a brand new environment needs these: once the containers hold a value,
