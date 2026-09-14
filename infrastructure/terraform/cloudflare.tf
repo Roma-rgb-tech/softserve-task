@@ -13,7 +13,7 @@ resource "cloudflare_dns_record" "endpoint" {
   name    = each.value.hostname
   type    = "A"
   content = local.vms[each.key].public_ip
-  ttl     = 300
+  ttl     = 1
   proxied = false
   comment = "Managed by Terraform for the ${each.key} workload"
 
