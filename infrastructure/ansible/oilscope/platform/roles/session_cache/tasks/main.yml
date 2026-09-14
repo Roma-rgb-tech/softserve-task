@@ -62,4 +62,5 @@
   changed_when: false
   retries: "{{ session_cache_health_retries }}"
   delay: "{{ session_cache_health_delay }}"
-  until: session_cache_health.stdout | trim == 'healthy'
+  until: session_cache_health.stdout | trim in ['healthy', 'unhealthy']
+  failed_when: session_cache_health.stdout | trim == 'unhealthy'

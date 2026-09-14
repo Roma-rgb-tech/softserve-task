@@ -6,14 +6,15 @@ services:
     pull_policy: ${REDIS_PULL_POLICY:-missing}
     restart: unless-stopped
     command:
-      - redis-server
-      - --requirepass
-      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-      - --appendonly
-      - "yes"
-      - --maxmemory-policy
-      - volatile-ttl
+      - sh
+      - -c
+      - >-
+        exec redis-server
+        --requirepass "$$REDIS_PASSWORD"
+        --appendonly yes
+        --maxmemory-policy volatile-ttl
     environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       TZ: UTC
     ports:
       - "${CACHE_BIND_ADDRESS:-0.0.0.0}:${CACHE_HOST_PORT:-6379}:6379"
@@ -23,10 +24,10 @@ services:
       test:
         - CMD-SHELL
         - redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping | grep -q PONG
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
     stop_grace_period: 20s
     security_opt:
       - no-new-privileges:true
