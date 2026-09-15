@@ -14,7 +14,7 @@ resource "aws_secretsmanager_secret" "this" {
   description = "Managed by Terraform from the project configuration"
   tags        = local.tags
 
-  recovery_window_in_days = var.config.environment == "prod" ? 30 : 0
+  recovery_window_in_days = local.recovery_days
 }
 
 data "aws_iam_policy_document" "workload_secret_access" {

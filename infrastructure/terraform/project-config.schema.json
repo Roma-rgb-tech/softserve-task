@@ -354,6 +354,16 @@
             "pattern": "^arn:aws[a-z-]*:iam::[0-9]{12}:(root|user/.+|role/.+)$"
           },
           "uniqueItems": true
+        },
+        "secret_recovery_days": {
+          "description": "Days AWS keeps a deleted secret recoverable before the name is released. Zero deletes it immediately, so a destroy does not reserve the name. Seven or more is the AWS-supported retention range; choose it deliberately for a stand you cannot afford to lose.",
+          "type": "integer",
+          "enum": [
+            0,
+            7,
+            14,
+            30
+          ]
         }
       }
     },
