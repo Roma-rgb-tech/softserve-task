@@ -23,7 +23,7 @@ resource "google_monitoring_alert_policy" "threshold" {
         alignment_period     = "300s"
         per_series_aligner   = "ALIGN_MEAN"
         cross_series_reducer = "REDUCE_MAX"
-        group_by_fields      = ["resource.label.instance_id"]
+        group_by_fields      = ["metadata.user_labels.\"role\""]
       }
     }
   }

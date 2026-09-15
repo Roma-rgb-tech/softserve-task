@@ -1,5 +1,5 @@
 locals {
-  gauge = { aligner = "ALIGN_MEAN", reducer = "REDUCE_MAX", group_by = ["resource.label.instance_id"] }
+  gauge = { aligner = "ALIGN_MEAN", reducer = "REDUCE_MAX", group_by = ["metadata.user_labels.\"role\""] }
 
   charts = [
     merge(local.gauge, { title = "CPU utilisation", metric = "compute.googleapis.com/instance/cpu/utilization", extra = "" }),
