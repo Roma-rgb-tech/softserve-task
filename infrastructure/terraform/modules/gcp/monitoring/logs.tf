@@ -7,7 +7,7 @@ resource "google_logging_metric" "http_errors" {
   filter = <<-EOT
     resource.type="gce_instance"
     log_id("${local.log_id}")
-    jsonPayload.log=~"HTTP/1\\.1\" 5[0-9][0-9]"
+    jsonPayload.log=~"HTTP/1.1. 5[0-9][0-9]"
   EOT
 
   metric_descriptor {
