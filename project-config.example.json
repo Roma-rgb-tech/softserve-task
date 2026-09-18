@@ -255,7 +255,7 @@
     }
   },
   "database": {
-    "managed": false,
+    "managed": true,
     "engine_version": "16",
     "size": "micro",
     "storage_gb": 20,
