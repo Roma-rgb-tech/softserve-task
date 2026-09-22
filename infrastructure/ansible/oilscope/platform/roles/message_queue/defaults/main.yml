@@ -19,8 +19,11 @@ message_queue_database_user: oil_tracker
 message_queue_database_password: ""
 message_queue_database_sslmode: require
 
-message_queue_health_retries: 30
+message_queue_health_retries: 60
 message_queue_health_delay: 5
+message_queue_failure_log_lines: 60
 message_queue_docker_config_dir: /run/oilscope/docker-auth
 
 message_queue_show_migration_output: false
+message_queue_volume: rabbitmq_data
+message_queue_password_marker: /var/lib/oilscope/queue-password.sha256

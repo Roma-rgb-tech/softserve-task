@@ -5,6 +5,7 @@
     secret_versions_targets: >-
       {{ secret_versions_catalog | selectattr('clouds', 'contains', 'azure') | list }}
     secret_versions_present: []
+    secret_versions_unchanged: []
     secret_versions_azure_subscription: >-
       {{ lookup('ansible.builtin.env', 'ARM_SUBSCRIPTION_ID')
          | default(secret_versions_config.azure.subscription_id | default(''), true) }}
@@ -103,16 +104,63 @@
          | list }}
   when: secret_versions_unavailable | length > 0
 
+# A value in the environment is written only when it differs from what the
+# container already serves. Writing the same value again adds a version and
+# reports a change on every run, although nothing the workloads read moved.
+# A container that cannot be read is written, as before.
+- name: Read the value each supplied container serves
+  ansible.builtin.command:
+    argv:
+      - "{{ secret_versions_az }}"
+      - keyvault
+      - secret
+      - show
+      - --vault-name
+      - "{{ secret_versions_vault }}"
+      - --name
+      - "{{ item.secret_id }}"
+      - --subscription
+      - "{{ secret_versions_azure_subscription }}"
+      - --query
+      - value
+      - --output
+      - tsv
+  loop: >-
+    {{ secret_versions_targets
+       | selectattr('secret_id', 'in', secret_versions_supplied | default([]))
+       | list }}
+  loop_control:
+    label: "{{ item.secret_id }}"
+  register: secret_versions_current
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Note the containers that already serve the supplied value
+  ansible.builtin.set_fact:
+    secret_versions_unchanged: >-
+      {{ secret_versions_unchanged | default([])
+         + ([item.item.secret_id]
+            if item.rc == 0
+               and (item.stdout | default('') | trim)
+                   == (lookup('ansible.builtin.env', item.item.variable) | trim)
+            else []) }}
+  loop: "{{ secret_versions_current.results | default([]) }}"
+  no_log: true
+
 - name: Choose the containers that get a new version
   ansible.builtin.set_fact:
     secret_versions_writes: >-
       {{ secret_versions_targets
-         | rejectattr('secret_id', 'in', secret_versions_present) | list }}
+         | rejectattr('secret_id', 'in', secret_versions_present)
+         | rejectattr('secret_id', 'in', secret_versions_unchanged | default([]))
+         | list }}
 
 - name: Report the containers that are left alone
   ansible.builtin.debug:
     msg: "{{ item }} already holds a value in azure, leaving it alone"
-  loop: "{{ secret_versions_present }}"
+  loop: "{{ secret_versions_present + (secret_versions_unchanged | default([])) }}"
 
 - name: Add a new version to every container
   ansible.builtin.command:

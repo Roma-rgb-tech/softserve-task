@@ -12,3 +12,4 @@ managed_database_arm_api: https://management.azure.com
 managed_database_arm_version: "2024-08-01"
 managed_database_ready_retries: 60
 managed_database_ready_delay: 10
+managed_database_version_tag: oilscope_password_version
