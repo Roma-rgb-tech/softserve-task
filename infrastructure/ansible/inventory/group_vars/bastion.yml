@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+bastion_config_key: >-
+  {{ inventory_hostname | regex_replace('^' ~ (oilscope_name_prefix | trim ~ '-') | regex_escape, '') }}
+
 bastion_ssh_port: >-
   {{ (lookup('ansible.builtin.file', project_config_path) | from_json)
-     .vms.bastion.ssh_port | int }}
+     .vms[bastion_config_key].ssh_port | int }}
 
 # An escape hatch, not a routine step: bootstrap_bastion.yml works out on its
 # own whether the host has been moved off the image default port yet.

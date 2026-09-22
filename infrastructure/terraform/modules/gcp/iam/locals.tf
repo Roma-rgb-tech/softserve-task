@@ -4,6 +4,6 @@ locals {
   prefix    = "${var.config.name_prefix}-${var.config.environment}"
   project   = lookup(lookup(var.config, "gcp", {}), "project_id", null)
   monitored = length(lookup(var.config, "monitoring", {})) > 0
-  managed   = lookup(lookup(var.config, "database", {}), "managed", false)
+  managed   = lookup(lookup(var.config, "database", {}), "managed", false) && lookup(lookup(var.config, "database", {}), "cloud", local.default) == local.cloud
   selected  = { for n, vm in var.config.vms : n => vm if lookup(vm, "cloud", local.default) == local.cloud }
 }

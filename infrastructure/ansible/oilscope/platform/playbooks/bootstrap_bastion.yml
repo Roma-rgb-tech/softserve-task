@@ -52,3 +52,13 @@
     - name: Check the SSH connection on the final port
       ansible.builtin.ping:
       changed_when: false
+
+- name: Join the bastions to the tailnet
+  hosts: bastion
+  gather_facts: false
+  vars:
+    oilscope_tailnet: >-
+      {{ (lookup('ansible.builtin.file', project_config_path) | from_json).tailscale is defined }}
+  roles:
+    - role: oilscope.platform.tailnet
+      when: oilscope_tailnet | bool

@@ -22,3 +22,8 @@ output "region" {
   description = "Provider region this cloud deployed into, or null when it created nothing."
   value       = length(local.selected) > 0 ? lookup(lookup(var.config.catalog.region, local.cloud, {}), local.token, null) : null
 }
+
+output "bastion_interface_id" {
+  description = "Primary network interface of the bastion, the next hop for the ranges of the other clouds when the tailnet joins them."
+  value       = one([for name, instance in aws_instance.workload : instance.primary_network_interface_id if local.vms[name].role == "bastion"])
+}

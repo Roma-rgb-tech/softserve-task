@@ -85,3 +85,13 @@ module "database" {
   subnet_id           = module.network.database_subnet_id
   client_cidrs        = module.network.client_cidrs
 }
+
+module "tailnet" {
+  source = "./tailnet"
+
+  config              = var.config
+  resource_group_name = module.network.resource_group_name
+  location            = module.network.location
+  subnets             = module.network.subnets
+  next_hop            = module.vm.bastion_private_ip
+}

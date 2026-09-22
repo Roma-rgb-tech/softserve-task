@@ -7,4 +7,5 @@ locals {
   needs_iops     = ["io1", "io2"]
   device_letters = "fghi"
   selected       = { for n, vm in var.config.vms : n => vm if lookup(vm, "cloud", local.default) == local.cloud }
+  tailnet        = contains(keys(var.config), "tailscale")
 }

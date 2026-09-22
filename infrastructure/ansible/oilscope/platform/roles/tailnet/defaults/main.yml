@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+tailnet_config_path: "{{ project_config_path | default('') }}"
+
+tailnet_api: https://api.tailscale.com/api/v2
+tailnet_api_key_variable: TAILSCALE_API_KEY
+
+tailnet_repository: https://pkgs.tailscale.com/stable/ubuntu
+tailnet_repository_release: noble
+tailnet_keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
+
+tailnet_auth_key_ttl_seconds: 600

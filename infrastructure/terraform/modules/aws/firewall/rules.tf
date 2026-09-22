@@ -81,6 +81,24 @@ locals {
       }
     },
     {
+      for port in local.has_bastion && local.tailnet ? [
+        local.ports.postgresql, local.amqp_port, local.redis_port
+      ] : [] :
+      "tailnet-infra/${port}" => {
+        group       = "infra", cidr_ipv4 = null, source_group = "bastion"
+        from_port   = port, to_port = port
+        description = "Traffic from the other clouds, through the tailnet subnet router"
+      }
+    },
+    {
+      for name in local.has_bastion && local.tailnet ? ["tailnet-history"] : [] :
+      name => {
+        group       = "history", cidr_ipv4 = null, source_group = "bastion"
+        from_port   = local.ports.history_api, to_port = local.ports.history_api
+        description = "History API from the other clouds, through the tailnet subnet router"
+      }
+    },
+    {
       for name in local.enabled ? ["history-api"] : [] :
       name => {
         group       = "history", cidr_ipv4 = null, source_group = "ui"

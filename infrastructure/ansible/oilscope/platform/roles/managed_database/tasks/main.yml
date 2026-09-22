@@ -17,7 +17,8 @@
     managed_database_settings: >-
       {{ managed_database_config.database | default({}) }}
     managed_database_cloud: >-
-      {{ managed_database_config.default_cloud }}
+      {{ (managed_database_config.database | default({})).cloud
+         | default(managed_database_config.default_cloud) }}
     managed_database_instance: >-
       {{ managed_database_config.name_prefix }}-{{ managed_database_config.environment }}-database
 

@@ -6,6 +6,8 @@ resource "azurerm_network_interface" "workload" {
   resource_group_name = var.resource_group_name
   tags                = each.value.tags
 
+  ip_forwarding_enabled = each.value.role == "bastion" && local.tailnet
+
   ip_configuration {
     name                          = "primary"
     subnet_id                     = each.value.public_subnet ? var.subnets.management : var.subnets.workload

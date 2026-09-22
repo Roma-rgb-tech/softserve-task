@@ -1,7 +1,7 @@
 # Bastion
 
 Configures SSH access to the bastion. The port comes from
-`vms.bastion.ssh_port` in the project config.
+`vms.<bastion>.ssh_port` in the project config, for the bastion of each cloud.
 
 ## Requirements
 

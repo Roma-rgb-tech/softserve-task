@@ -60,3 +60,11 @@ module "database" {
   network_id = module.network.network_id
   subnet_id  = module.network.database_subnet_id
 }
+
+module "tailnet" {
+  source = "./tailnet"
+
+  config     = var.config
+  network_id = module.network.network_id
+  next_hop   = module.vm.bastion_instance
+}

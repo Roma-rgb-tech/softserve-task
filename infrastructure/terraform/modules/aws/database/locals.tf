@@ -7,7 +7,7 @@ locals {
 
   database_cidrs = lookup(var.config.network, "database_subnet_cidrs", [])
 
-  enabled = local.in_use && lookup(local.settings, "managed", false) && length(local.database_cidrs) > 0 ? 1 : 0
+  enabled = local.in_use && lookup(local.settings, "managed", false) && lookup(local.settings, "cloud", local.default) == local.cloud && length(local.database_cidrs) > 0 ? 1 : 0
 
   instance_class = lookup(lookup(var.config.catalog, "db_size", {}), local.cloud, {})[lookup(local.settings, "size", "micro")]
   port           = var.config.service_ports.postgresql

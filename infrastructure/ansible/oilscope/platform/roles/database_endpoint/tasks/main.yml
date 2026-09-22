@@ -6,7 +6,7 @@
   when: not oilscope_database_managed
 
 - name: Resolve the managed database
-  ansible.builtin.include_tasks: "{{ oilscope_cloud }}.yml"
+  ansible.builtin.include_tasks: "{{ oilscope_database_cloud | trim }}.yml"
   when: oilscope_database_managed
 
 - name: Report where the database is
@@ -14,5 +14,5 @@
     msg: >-
       {{ inventory_hostname }} reaches PostgreSQL at
       {{ oilscope_database_host }}:{{ oilscope_database_port }}
-      ({{ 'managed by ' ~ oilscope_cloud if oilscope_database_managed
+      ({{ 'managed by ' ~ oilscope_database_cloud | trim if oilscope_database_managed
           else 'container on ' ~ groups['database'][0] }})

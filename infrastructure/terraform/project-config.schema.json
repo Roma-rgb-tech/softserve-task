@@ -109,6 +109,100 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "clouds": {
+          "description": "Per-cloud network ranges. Each cloud reads its own entry over the shared values, so the three networks stay distinct and the tailnet can route between them.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gcp": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "management_subnet_cidr": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workload_subnet_cidr": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "vpc_cidr": {
+                  "description": "CIDR range of the VPC. AWS requires one; GCP derives its network from the subnets and ignores this value.",
+                  "type": "string"
+                },
+                "database_subnet_cidrs": {
+                  "description": "Ranges the managed database lives in, kept apart from the workloads. AWS spreads a DB subnet group over them and needs at least two, in different availability zones; GCP puts the Private Service Connect endpoint in the first one.",
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "aws": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "management_subnet_cidr": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workload_subnet_cidr": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "vpc_cidr": {
+                  "description": "CIDR range of the VPC. AWS requires one; GCP derives its network from the subnets and ignores this value.",
+                  "type": "string"
+                },
+                "database_subnet_cidrs": {
+                  "description": "Ranges the managed database lives in, kept apart from the workloads. AWS spreads a DB subnet group over them and needs at least two, in different availability zones; GCP puts the Private Service Connect endpoint in the first one.",
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "azure": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "management_subnet_cidr": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workload_subnet_cidr": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "vpc_cidr": {
+                  "description": "CIDR range of the VPC. AWS requires one; GCP derives its network from the subnets and ignores this value.",
+                  "type": "string"
+                },
+                "database_subnet_cidrs": {
+                  "description": "Ranges the managed database lives in, kept apart from the workloads. AWS spreads a DB subnet group over them and needs at least two, in different availability zones; GCP puts the Private Service Connect endpoint in the first one.",
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -236,14 +330,14 @@
     "vms": {
       "type": "object",
       "minProperties": 2,
-      "required": [
-        "bastion"
-      ],
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$"
       },
-      "properties": {
-        "bastion": {
+      "additionalProperties": {
+        "$ref": "#/$defs/vm"
+      },
+      "patternProperties": {
+        "^bastion(-[a-z0-9]+)?$": {
           "allOf": [
             {
               "$ref": "#/$defs/vm"
@@ -261,9 +355,7 @@
           ]
         }
       },
-      "additionalProperties": {
-        "$ref": "#/$defs/vm"
-      }
+      "description": "One bastion per cloud in use, keyed bastion or bastion-<cloud>, and the workloads."
     },
     "default_region": {
       "description": "Portable region token. Terraform resolves it to a provider region and zone.",
@@ -445,6 +537,10 @@
             "ENTERPRISE_PLUS"
           ],
           "default": "ENTERPRISE"
+        },
+        "cloud": {
+          "description": "Cloud that hosts the managed database. Defaults to default_cloud.",
+          "$ref": "#/$defs/cloud"
         }
       },
       "allOf": [
@@ -537,6 +633,23 @@
           "type": "integer",
           "minimum": 7,
           "maximum": 90
+        }
+      }
+    },
+    "tailscale": {
+      "description": "Joins the bastions of every cloud in use into one tailnet as subnet routers, so a workload in one cloud reaches the others by private address. The API access token is read from TAILSCALE_API_KEY at deploy time and never stored.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tailnet": {
+          "description": "Tailnet name, or - for the tailnet the access token belongs to.",
+          "type": "string",
+          "default": "-"
+        },
+        "key_expiry_disabled": {
+          "description": "Keeps the subnet routers from dropping off the tailnet when their node key expires.",
+          "type": "boolean",
+          "default": true
         }
       }
     }

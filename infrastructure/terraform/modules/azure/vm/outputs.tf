@@ -22,3 +22,8 @@ output "region" {
   description = "Provider region this cloud deployed into, or null when it created no VM."
   value       = length(local.selected) > 0 ? lookup(lookup(var.config.catalog.region, local.cloud, {}), local.token, null) : null
 }
+
+output "bastion_private_ip" {
+  description = "Private address of the bastion, the next hop for the ranges of the other clouds when the tailnet joins them."
+  value       = one([for name, vm in local.vms : vm.internal_ip if vm.role == "bastion"])
+}
