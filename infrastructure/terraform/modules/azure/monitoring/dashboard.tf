@@ -1,6 +1,6 @@
 locals {
   panels = [
-    { title = "CPU utilisation, %", object = "Processor Information", counter = "% Processor Time", aggregate = "avg" },
+    { title = "CPU utilisation, %", object = "Processor", counter = "% Processor Time", aggregate = "avg" },
     { title = "Memory used, %", object = "Memory", counter = "% Used Memory", aggregate = "avg" },
     { title = "Disk used, %", object = "Logical Disk", counter = "% Used Space", aggregate = "max" },
   ]
@@ -14,7 +14,7 @@ locals {
         content = {
           version                 = "KqlItem/1.0"
           title                   = panel.title
-          query                   = "Perf | where ObjectName == \"${panel.object}\" and CounterName == \"${panel.counter}\" | where InstanceName !startswith \"/dev/loop\" | summarize ${panel.aggregate}(CounterValue) by Computer, bin(TimeGenerated, 5m)"
+          query                   = "Perf | where ObjectName startswith \"${panel.object}\" and CounterName == \"${panel.counter}\" | where InstanceName !startswith \"/dev/loop\" | where ObjectName != \"Processor\" or InstanceName in (\"_Total\", \"total\") | summarize ${panel.aggregate}(CounterValue) by Computer, bin(TimeGenerated, 5m)"
           size                    = 0
           queryType               = 0
           resourceType            = "microsoft.operationalinsights/workspaces"
