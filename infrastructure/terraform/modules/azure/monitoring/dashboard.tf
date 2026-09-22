@@ -18,7 +18,7 @@ locals {
           size                    = 0
           queryType               = 0
           resourceType            = "microsoft.operationalinsights/workspaces"
-          crossComponentResources = [lower(azurerm_log_analytics_workspace.main[0].id)]
+          crossComponentResources = [for id in azurerm_log_analytics_workspace.main[*].id : lower(id)]
           visualization           = "timechart"
           timeContext             = { durationMs = 21600000 }
         }
