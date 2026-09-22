@@ -21,3 +21,4 @@ secret_versions_generate: []
 
 secret_versions_gcloud: gcloud
 secret_versions_aws: aws
+secret_versions_az: az

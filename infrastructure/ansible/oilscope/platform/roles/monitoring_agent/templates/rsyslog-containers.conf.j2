@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+module(load="imfile")
+
+input(type="imfile"
+      File="{{ monitoring_agent_container_logs }}"
+      Tag="{{ monitoring_agent_log_id }}:"
+      Facility="user"
+      Severity="info"
+      addMetadata="on")

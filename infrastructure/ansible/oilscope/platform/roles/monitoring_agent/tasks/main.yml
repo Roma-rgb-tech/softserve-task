@@ -18,12 +18,14 @@
       /{{ monitoring_agent_config.name_prefix }}/{{ monitoring_agent_config.environment }}/docker
     monitoring_agent_log_id: docker
     monitoring_agent_cloud: >-
-      {{ 'gcp' if 'cloud_gcp' in group_names else 'aws' if 'cloud_aws' in group_names else '' }}
+      {{ 'gcp' if 'cloud_gcp' in group_names
+         else 'aws' if 'cloud_aws' in group_names
+         else 'azure' if 'cloud_azure' in group_names else '' }}
 
 - name: Refuse to configure an agent for an unknown cloud
   ansible.builtin.fail:
     msg: >-
-      {{ inventory_hostname }} is in neither cloud_gcp nor cloud_aws, so there
+      {{ inventory_hostname }} is in none of cloud_gcp, cloud_aws or cloud_azure, so there
       is no native agent to install.
   when: monitoring_agent_cloud | length == 0
 

@@ -4,5 +4,11 @@ managed_database_config_file: ""
 
 managed_database_gcloud: gcloud
 managed_database_aws: aws
+managed_database_az: az
 
 managed_database_api: https://sqladmin.googleapis.com/v1
+
+managed_database_arm_api: https://management.azure.com
+managed_database_arm_version: "2024-08-01"
+managed_database_ready_retries: 60
+managed_database_ready_delay: 10

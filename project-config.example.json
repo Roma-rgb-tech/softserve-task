@@ -12,6 +12,11 @@
         "micro": "t3.micro",
         "small": "t3.small",
         "medium": "t3.medium"
+      },
+      "azure": {
+        "micro": "Standard_D2als_v7",
+        "small": "Standard_D2as_v7",
+        "medium": "Standard_D4as_v7"
       }
     },
     "disk_type": {
@@ -24,6 +29,11 @@
         "standard": "gp2",
         "balanced": "gp3",
         "ssd": "io2"
+      },
+      "azure": {
+        "standard": "Standard_LRS",
+        "balanced": "StandardSSD_LRS",
+        "ssd": "Premium_LRS"
       }
     },
     "region": {
@@ -34,6 +44,10 @@
       "aws": {
         "us-east": "us-east-1",
         "eu-west": "eu-west-1"
+      },
+      "azure": {
+        "us-east": "centralus",
+        "eu-west": "northeurope"
       }
     },
     "zone": {
@@ -44,6 +58,10 @@
       "aws": {
         "us-east": "us-east-1a",
         "eu-west": "eu-west-1a"
+      },
+      "azure": {
+        "us-east": "1",
+        "eu-west": "1"
       }
     },
     "os": {
@@ -54,6 +72,10 @@
       "aws": {
         "ubuntu-26.04": "ubuntu/images/hvm-ssd-gp3/ubuntu-resolute-26.04-amd64-server-*",
         "ubuntu-24.04": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
+      },
+      "azure": {
+        "ubuntu-24.04": "Canonical:ubuntu-24_04-lts:server:latest",
+        "ubuntu-26.04": "Canonical:ubuntu-26_04-lts:server:latest"
       }
     },
     "db_size": {
@@ -66,6 +88,11 @@
         "micro": "db.t3.micro",
         "small": "db.t3.small",
         "medium": "db.t3.medium"
+      },
+      "azure": {
+        "micro": "B_Standard_B1ms",
+        "small": "B_Standard_B2s",
+        "medium": "GP_Standard_D2s_v3"
       }
     }
   },

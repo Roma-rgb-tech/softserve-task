@@ -52,6 +52,11 @@ oilscope_aws_region: >-
   {{ lookup('ansible.builtin.env', 'AWS_REGION')
      | default(oilscope_project_config.aws.regions | default([]) | first | default(''), true) }}
 
+oilscope_azure_subscription: >-
+  {{ lookup('ansible.builtin.env', 'ARM_SUBSCRIPTION_ID')
+     | default(oilscope_project_config.azure.subscription_id | default(''), true) }}
+oilscope_azure_resource_group: "{{ oilscope_name_prefix }}-rg"
+
 oilscope_sessions_settings: "{{ oilscope_project_config.sessions | default({}) }}"
 
 oilscope_sessions_backend: >-

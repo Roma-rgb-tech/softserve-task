@@ -70,3 +70,10 @@ has anything in it once the containers are up.
 ## License
 
 GPL-2.0-or-later
+
+## Azure
+
+Terraform installs the Azure Monitor agent as a VM extension and tells it what
+to collect through a data collection rule, so this role installs nothing on
+Azure. It checks that the agent is running and makes rsyslog read the container
+logs, because the rule collects syslog and the 5xx alert searches that table.

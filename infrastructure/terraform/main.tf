@@ -9,3 +9,9 @@ module "aws" {
 
   config = local.config
 }
+
+module "azure" {
+  source = "./modules/azure"
+
+  config = local.config
+}

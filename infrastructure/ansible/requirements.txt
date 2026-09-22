@@ -3,7 +3,10 @@
 #     pip install -r infrastructure/ansible/requirements.txt
 #
 # google-auth and requests back the gcp_compute inventory plugin; boto3 and
-# botocore back aws_ec2.
+# botocore back aws_ec2; the azure.azcollection requirements file backs
+# azure_rm:
+#
+#     pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 google-auth>=2.0.0
 requests>=2.25.0
 boto3>=1.34.0

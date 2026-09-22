@@ -3,6 +3,7 @@ resource "cloudflare_dns_record" "endpoint" {
     for name, vm in local.config.vms : name => vm.public_endpoint
     if lookup(vm, "public_endpoint", null) != null
     && lookup(vm.public_endpoint, "cloudflare_zone_id", "") != ""
+    && contains(keys(local.vms), name)
   }
 
   zone_id = each.value.cloudflare_zone_id

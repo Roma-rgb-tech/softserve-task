@@ -1,0 +1,19 @@
+locals {
+  cloud    = "azure"
+  default  = lookup(var.config, "default_cloud", "")
+  prefix   = "${var.config.name_prefix}-${var.config.environment}"
+  token    = lookup(var.config, "default_region", "")
+  location = lookup(lookup(var.config.catalog.region, local.cloud, {}), local.token, null)
+  count    = contains(keys(var.config), local.cloud) || anytrue([for vm in var.config.vms : lookup(vm, "cloud", local.default) == local.cloud]) ? 1 : 0
+
+  managed_database = lookup(lookup(var.config, "database", {}), "managed", false)
+  database_cidrs   = lookup(var.config.network, "database_subnet_cidrs", [])
+  database_count   = local.count == 1 && local.managed_database && length(local.database_cidrs) > 0 ? 1 : 0
+
+  tags = merge({
+    application = var.config.name_prefix
+    environment = var.config.environment
+    managed_by  = "terraform"
+    cloud       = local.cloud
+  }, var.config.common_labels)
+}

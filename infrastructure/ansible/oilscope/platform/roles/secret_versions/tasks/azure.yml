@@ -1,0 +1,162 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Select the containers held in Azure
+  ansible.builtin.set_fact:
+    secret_versions_targets: >-
+      {{ secret_versions_catalog | selectattr('clouds', 'contains', 'azure') | list }}
+    secret_versions_present: []
+    secret_versions_azure_subscription: >-
+      {{ lookup('ansible.builtin.env', 'ARM_SUBSCRIPTION_ID')
+         | default(secret_versions_config.azure.subscription_id | default(''), true) }}
+    secret_versions_azure_group: >-
+      {{ secret_versions_config.name_prefix }}-{{ secret_versions_config.environment }}-rg
+
+- name: Refuse to upload without a target subscription
+  ansible.builtin.fail:
+    msg: >-
+      No Azure subscription resolved. Set $ARM_SUBSCRIPTION_ID or
+      azure.subscription_id in the project configuration.
+  when: secret_versions_azure_subscription | length == 0
+
+- name: Ask Azure which key vault holds this deployment's secrets
+  ansible.builtin.command:
+    argv:
+      - "{{ secret_versions_az }}"
+      - keyvault
+      - list
+      - --resource-group
+      - "{{ secret_versions_azure_group }}"
+      - --subscription
+      - "{{ secret_versions_azure_subscription }}"
+      - --query
+      - "[].name"
+      - --output
+      - tsv
+  register: secret_versions_vaults
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to upload without exactly one key vault
+  ansible.builtin.fail:
+    msg: >-
+      Expected one key vault in {{ secret_versions_azure_group }}, found
+      {{ (secret_versions_vaults.stdout | trim).splitlines() | select | list | length }}.
+      Run terraform apply first.
+  when: (secret_versions_vaults.stdout | trim).splitlines() | select | list | length != 1
+
+- name: Use the key vault Terraform created
+  ansible.builtin.set_fact:
+    secret_versions_vault: "{{ secret_versions_vaults.stdout | trim }}"
+
+- name: Ask how each container's latest version was written
+  ansible.builtin.command:
+    argv:
+      - "{{ secret_versions_az }}"
+      - keyvault
+      - secret
+      - show
+      - --vault-name
+      - "{{ secret_versions_vault }}"
+      - --name
+      - "{{ item.secret_id }}"
+      - --subscription
+      - "{{ secret_versions_azure_subscription }}"
+      - --query
+      - contentType
+      - --output
+      - tsv
+  loop: >-
+    {{ secret_versions_targets
+       | rejectattr('secret_id', 'in', secret_versions_supplied | default([]))
+       | list }}
+  loop_control:
+    label: "{{ item.secret_id }}"
+  register: secret_versions_existing
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Note the containers that already hold a real value
+  ansible.builtin.set_fact:
+    secret_versions_present: >-
+      {{ secret_versions_present
+         + ([item.item.secret_id]
+            if item.rc == 0 and (item.stdout | default('') | trim) not in ['', 'unset', 'None']
+            else []) }}
+  loop: "{{ secret_versions_existing.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.secret_id }}"
+
+- name: Refuse to upload incomplete secret versions
+  ansible.builtin.fail:
+    msg: >-
+      No value available for
+      {{ secret_versions_unavailable | map(attribute='variable') | join(', ') }}:
+      the environment holds none, the container holds only the Terraform
+      placeholder, and it is not listed in generated_secrets.
+  vars:
+    secret_versions_unavailable: >-
+      {{ secret_versions_targets
+         | rejectattr('secret_id', 'in', secret_versions_supplied | default([]))
+         | rejectattr('secret_id', 'in', secret_versions_present)
+         | rejectattr('generated')
+         | list }}
+  when: secret_versions_unavailable | length > 0
+
+- name: Choose the containers that get a new version
+  ansible.builtin.set_fact:
+    secret_versions_writes: >-
+      {{ secret_versions_targets
+         | rejectattr('secret_id', 'in', secret_versions_present) | list }}
+
+- name: Report the containers that are left alone
+  ansible.builtin.debug:
+    msg: "{{ item }} already holds a value in azure, leaving it alone"
+  loop: "{{ secret_versions_present }}"
+
+- name: Add a new version to every container
+  ansible.builtin.command:
+    argv:
+      - "{{ secret_versions_az }}"
+      - keyvault
+      - secret
+      - set
+      - --vault-name
+      - "{{ secret_versions_vault }}"
+      - --name
+      - "{{ item.secret_id }}"
+      - --subscription
+      - "{{ secret_versions_azure_subscription }}"
+      - --file
+      - /dev/stdin
+      - --encoding
+      - utf-8
+      - --description
+      - text/plain
+      - --query
+      - id
+      - --output
+      - tsv
+    stdin: >-
+      {{ lookup('ansible.builtin.env', item.variable)
+         | default(secret_versions_invented[item.secret_id] | default(''), true) }}
+    stdin_add_newline: false
+  loop: "{{ secret_versions_writes }}"
+  loop_control:
+    label: "{{ item.secret_id }}"
+  register: secret_versions_added
+  changed_when: true
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Report the new versions
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.secret_id }} <- {{ 'a generated value'
+      if item.item.secret_id in (secret_versions_invented | default({}) | list)
+      else '$' ~ item.item.variable }}
+      (azure version {{ item.stdout | trim | regex_replace('^.*/', '') }})
+  loop: "{{ secret_versions_added.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.secret_id }}"
+  when: not ansible_check_mode

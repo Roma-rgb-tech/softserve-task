@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Ask Azure which key vault holds this deployment's secrets
+  ansible.builtin.command:
+    argv:
+      - "{{ resolve_secrets_az }}"
+      - keyvault
+      - list
+      - --resource-group
+      - "{{ oilscope_azure_resource_group }}"
+      - --subscription
+      - "{{ oilscope_azure_subscription }}"
+      - --query
+      - "[].name"
+      - --output
+      - tsv
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: resolve_secrets_vaults
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to continue without exactly one key vault
+  ansible.builtin.fail:
+    msg: >-
+      Expected one key vault in {{ oilscope_azure_resource_group }}, found
+      {{ (resolve_secrets_vaults.stdout | trim).splitlines() | select | list | length }}.
+      Run terraform apply first.
+  when: (resolve_secrets_vaults.stdout | trim).splitlines() | select | list | length != 1
+
+- name: Fetch a Key Vault token for the VM's managed identity
+  ansible.builtin.uri:
+    url: "{{ resolve_secrets_azure_token_url }}"
+    headers:
+      Metadata: "true"
+    return_content: true
+  register: resolve_secrets_token
+  no_log: true
+
+- name: Read each mapped secret
+  ansible.builtin.uri:
+    url: >-
+      https://{{ resolve_secrets_vaults.stdout | trim }}.vault.azure.net/secrets/{{ item.value }}?api-version={{ resolve_secrets_keyvault_api_version }}
+    headers:
+      Authorization: "Bearer {{ (resolve_secrets_token.content | from_json).access_token }}"
+    return_content: true
+  register: resolve_secrets_accessed
+  no_log: true
+  loop: "{{ resolve_secrets_mappings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Collect the secrets that still hold the Terraform placeholder
+  ansible.builtin.set_fact:
+    resolve_secrets_unset: >-
+      {{ resolve_secrets_accessed.results | default([])
+         | selectattr('content', 'search', '"contentType": *"unset"')
+         | map(attribute='item.value') | list }}
+  no_log: true
+
+- name: Refuse to deploy with a placeholder value
+  ansible.builtin.fail:
+    msg: >-
+      {{ resolve_secrets_unset | join(', ') }} still hold the placeholder
+      Terraform created. Run the secret_versions playbook first.
+  when: resolve_secrets_unset | length > 0
+
+- name: Build the resolved secrets mapping
+  ansible.builtin.set_fact:
+    resolve_secrets_result: >-
+      {{ resolve_secrets_result | default({}) | combine({
+           item.item.key: (item.content | from_json).value
+         }) }}
+  no_log: true
+  loop: "{{ resolve_secrets_accessed.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.key }}"
