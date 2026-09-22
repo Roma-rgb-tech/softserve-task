@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Confirm the Azure Monitor agent Terraform installed is running
+  ansible.builtin.systemd_service:
+    name: azuremonitoragent
+  register: monitoring_agent_azure_service
+  failed_when: monitoring_agent_azure_service.status.ActiveState | default('') != 'active'
+  changed_when: false
+
+- name: Install rsyslog
+  become: true
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+
+- name: Hand the container logs to syslog, where the agent collects them
+  become: true
+  ansible.builtin.template:
+    src: rsyslog-containers.conf.j2
+    dest: /etc/rsyslog.d/60-oilscope-containers.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart rsyslog
+
+- name: Enable rsyslog
+  become: true
+  ansible.builtin.systemd_service:
+    name: rsyslog
+    enabled: true
+    state: started

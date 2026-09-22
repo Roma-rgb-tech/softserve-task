@@ -14,9 +14,19 @@ terraform {
       version = "~> 6.20"
     }
 
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.40"
+    }
+
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 5.2"
+    }
+
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.13"
     }
 
     random = {

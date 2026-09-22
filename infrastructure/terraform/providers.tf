@@ -13,6 +13,12 @@ provider "aws" {
   )
 }
 
+provider "azurerm" {
+  features {}
+
+  subscription_id = lookup(lookup(local.config, "azure", {}), "subscription_id", null)
+}
+
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }

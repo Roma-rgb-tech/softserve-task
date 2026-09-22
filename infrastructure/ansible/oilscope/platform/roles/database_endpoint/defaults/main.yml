@@ -2,3 +2,4 @@
 ---
 database_endpoint_aws: aws
 database_endpoint_gcloud: gcloud
+database_endpoint_az: az

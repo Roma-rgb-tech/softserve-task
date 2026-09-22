@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Ask Azure which flexible servers carry this deployment's name
+  ansible.builtin.command:
+    argv:
+      - "{{ database_endpoint_az }}"
+      - postgres
+      - flexible-server
+      - list
+      - --resource-group
+      - "{{ oilscope_azure_resource_group }}"
+      - --subscription
+      - "{{ oilscope_azure_subscription }}"
+      - --query
+      - "[?starts_with(name, '{{ oilscope_database_instance }}-')].name"
+      - --output
+      - tsv
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: database_endpoint_flexible
+  changed_when: false
+  check_mode: false
+
+- name: Collect what the search returned
+  ansible.builtin.set_fact:
+    database_endpoint_candidates: >-
+      {{ (database_endpoint_flexible.stdout | trim).splitlines()
+         | map('trim') | select() | list }}
+
+- name: Refuse to deploy against a database that was not found
+  ansible.builtin.fail:
+    msg: >-
+      No flexible server named {{ oilscope_database_instance }}-* exists in
+      {{ oilscope_azure_resource_group }}. Run terraform apply before
+      deploying, or turn database.managed off in the project configuration.
+  when: database_endpoint_candidates | length == 0
+
+- name: Refuse to choose between servers
+  ansible.builtin.fail:
+    msg: >-
+      {{ database_endpoint_candidates | length }} flexible servers match
+      {{ oilscope_database_instance }}-* in {{ oilscope_azure_resource_group }}:
+      {{ database_endpoint_candidates | join(', ') }}. Only one belongs to this
+      deployment; delete the orphans.
+  when: database_endpoint_candidates | length > 1
+
+- name: Read the address the private DNS zone gives the server
+  ansible.builtin.command:
+    argv:
+      - "{{ database_endpoint_az }}"
+      - network
+      - private-dns
+      - record-set
+      - a
+      - list
+      - --resource-group
+      - "{{ oilscope_azure_resource_group }}"
+      - --subscription
+      - "{{ oilscope_azure_subscription }}"
+      - --zone-name
+      - "{{ oilscope_name_prefix | trim }}.private.postgres.database.azure.com"
+      - --query
+      - "[].aRecords[].ipv4Address"
+      - --output
+      - tsv
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: database_endpoint_record
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to deploy without that address
+  ansible.builtin.fail:
+    msg: >-
+      Expected one address in the private DNS zone of
+      {{ database_endpoint_candidates | first }}, found
+      {{ (database_endpoint_record.stdout | trim).splitlines() | select | list | length }}.
+  when: (database_endpoint_record.stdout | trim).splitlines() | select | list | length != 1
+
+- name: Point the workloads at the flexible server by address
+  ansible.builtin.set_fact:
+    oilscope_database_host: "{{ database_endpoint_record.stdout | trim }}"

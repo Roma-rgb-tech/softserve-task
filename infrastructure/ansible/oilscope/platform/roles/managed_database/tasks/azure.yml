@@ -1,0 +1,210 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Resolve the target subscription and key vault
+  ansible.builtin.set_fact:
+    managed_database_subscription: >-
+      {{ lookup('ansible.builtin.env', 'ARM_SUBSCRIPTION_ID')
+         | default(managed_database_config.azure.subscription_id | default(''), true) }}
+    managed_database_resource_group: >-
+      {{ managed_database_config.name_prefix }}-{{ managed_database_config.environment }}-rg
+
+- name: Refuse to continue without a target subscription
+  ansible.builtin.fail:
+    msg: >-
+      No Azure subscription resolved. Set $ARM_SUBSCRIPTION_ID or
+      azure.subscription_id in the project configuration.
+  when: managed_database_subscription | length == 0
+
+- name: Ask Azure which key vault holds this deployment's secrets
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_az }}"
+      - keyvault
+      - list
+      - --resource-group
+      - "{{ managed_database_resource_group }}"
+      - --subscription
+      - "{{ managed_database_subscription }}"
+      - --query
+      - "[].name"
+      - --output
+      - tsv
+  register: managed_database_vaults
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to continue without exactly one key vault
+  ansible.builtin.fail:
+    msg: >-
+      Expected one key vault in {{ managed_database_resource_group }}, found
+      {{ (managed_database_vaults.stdout | trim).splitlines() | select() | list | length }}.
+      Run terraform apply first.
+  when: (managed_database_vaults.stdout | trim).splitlines() | select() | list | length != 1
+
+- name: Use the key vault Terraform created
+  ansible.builtin.set_fact:
+    managed_database_key_vault: "{{ managed_database_vaults.stdout | trim }}"
+
+- name: Ask Azure which flexible servers carry this deployment's name
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_az }}"
+      - postgres
+      - flexible-server
+      - list
+      - --resource-group
+      - "{{ managed_database_resource_group }}"
+      - --subscription
+      - "{{ managed_database_subscription }}"
+      - --query
+      - "[?starts_with(name, '{{ managed_database_instance }}-')].name"
+      - --output
+      - tsv
+  register: managed_database_found
+  changed_when: false
+  check_mode: false
+
+- name: Collect what the search returned
+  ansible.builtin.set_fact:
+    managed_database_candidates: >-
+      {{ (managed_database_found.stdout | trim).splitlines()
+         | map('trim') | select() | list }}
+
+- name: Refuse to reconcile a server that is not there
+  ansible.builtin.fail:
+    msg: >-
+      No flexible server named {{ managed_database_instance }}-* exists in
+      {{ managed_database_resource_group }}. Run terraform apply first.
+  when: managed_database_candidates | length == 0
+
+- name: Refuse to choose between servers
+  ansible.builtin.fail:
+    msg: >-
+      {{ managed_database_candidates | length }} flexible servers match
+      {{ managed_database_instance }}-* in {{ managed_database_resource_group }}:
+      {{ managed_database_candidates | join(', ') }}. Only one belongs to this
+      deployment; compare them with the Terraform state and delete the others.
+  when: managed_database_candidates | length > 1
+
+- name: Use the name the server actually has
+  ansible.builtin.set_fact:
+    managed_database_instance: "{{ managed_database_candidates | first }}"
+    managed_database_server_url: >-
+      {{ managed_database_arm_api }}/subscriptions/{{ managed_database_subscription
+      }}/resourceGroups/{{ managed_database_resource_group
+      }}/providers/Microsoft.DBforPostgreSQL/flexibleServers/{{ managed_database_candidates | first
+      }}?api-version={{ managed_database_arm_version }}
+
+- name: Read the application password from the key vault
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_az }}"
+      - keyvault
+      - secret
+      - show
+      - --vault-name
+      - "{{ managed_database_key_vault }}"
+      - --name
+      - "{{ managed_database_settings.password_secret }}"
+      - --subscription
+      - "{{ managed_database_subscription }}"
+      - --query
+      - value
+      - --output
+      - tsv
+  register: managed_database_password
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Read how the secret's latest version was written
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_az }}"
+      - keyvault
+      - secret
+      - show
+      - --vault-name
+      - "{{ managed_database_key_vault }}"
+      - --name
+      - "{{ managed_database_settings.password_secret }}"
+      - --subscription
+      - "{{ managed_database_subscription }}"
+      - --query
+      - contentType
+      - --output
+      - tsv
+  register: managed_database_content_type
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to use the placeholder Terraform wrote
+  ansible.builtin.fail:
+    msg: >-
+      {{ managed_database_settings.password_secret }} in
+      {{ managed_database_key_vault }} still holds the placeholder Terraform
+      created. Add the real value with the secret-version script first.
+  when: managed_database_content_type.stdout | trim == 'unset'
+
+- name: Refuse to set an empty password
+  ansible.builtin.fail:
+    msg: >-
+      {{ managed_database_settings.password_secret }} in
+      {{ managed_database_key_vault }} is empty. Add a version before deploying.
+  when: managed_database_password.stdout | trim | length == 0
+
+- name: Take an access token for Azure Resource Manager
+  ansible.builtin.command:
+    argv:
+      - "{{ managed_database_az }}"
+      - account
+      - get-access-token
+      - --resource
+      - "{{ managed_database_arm_api }}"
+      - --subscription
+      - "{{ managed_database_subscription }}"
+      - --query
+      - accessToken
+      - --output
+      - tsv
+  register: managed_database_token
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Set the administrator password of the server
+  ansible.builtin.uri:
+    url: "{{ managed_database_server_url }}"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
+    body_format: json
+    body:
+      properties:
+        administratorLoginPassword: "{{ managed_database_password.stdout | trim }}"
+    status_code: [200, 202]
+  when: not ansible_check_mode
+  changed_when: true
+  no_log: true
+
+- name: Wait until the server has applied it
+  ansible.builtin.uri:
+    url: "{{ managed_database_server_url }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
+    status_code: 200
+  register: managed_database_state
+  until: managed_database_state.json.properties.state | default('') == 'Ready'
+  retries: "{{ managed_database_ready_retries }}"
+  delay: "{{ managed_database_ready_delay }}"
+  when: not ansible_check_mode
+  changed_when: false
+  no_log: true
+
+- name: Report what was reconciled
+  ansible.builtin.debug:
+    msg: >-
+      {{ managed_database_settings.username }} on {{ managed_database_instance }}
+      now authenticates with the value in
+      {{ managed_database_key_vault }}/{{ managed_database_settings.password_secret }}

@@ -372,7 +372,8 @@
       "type": "string",
       "enum": [
         "gcp",
-        "aws"
+        "aws",
+        "azure"
       ]
     },
     "database": {
@@ -511,6 +512,33 @@
           }
         }
       ]
+    },
+    "azure": {
+      "description": "Settings that exist only on Azure.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subscription_id": {
+          "description": "Subscription the stand is created in. When absent, the provider reads ARM_SUBSCRIPTION_ID from the environment.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "secret_version_managers": {
+          "description": "Entra ID object IDs allowed to add versions to each Key Vault secret, for the operator script that reads values from the environment.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "uniqueItems": true
+        },
+        "secret_recovery_days": {
+          "description": "Days Key Vault keeps a deleted vault and its secrets. Azure allows 7 to 90.",
+          "type": "integer",
+          "minimum": 7,
+          "maximum": 90
+        }
+      }
     }
   },
   "$defs": {
@@ -853,7 +881,8 @@
       "type": "string",
       "enum": [
         "gcp",
-        "aws"
+        "aws",
+        "azure"
       ]
     },
     "catalog_table": {
@@ -871,6 +900,14 @@
           }
         },
         "aws": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "azure": {
           "type": "object",
           "minProperties": 1,
           "additionalProperties": {

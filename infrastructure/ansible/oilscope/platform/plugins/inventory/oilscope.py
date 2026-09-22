@@ -30,8 +30,8 @@ description:
     and the per-cloud coordinates from the project configuration JSON that
     Terraform also reads, then hands them to the upstream discovery plugin of
     every cloud the configuration targets - C(google.cloud.gcp_compute) for
-    C(gcp) and C(amazon.aws.aws_ec2) for C(aws). No environment value is
-    repeated here.
+    C(gcp), C(amazon.aws.aws_ec2) for C(aws) and C(azure.azcollection.azure_rm)
+    for C(azure). No environment value is repeated here.
   - The clouds come from C(default_cloud) and the optional per-VM C(cloud) key,
     so a configuration that names one cloud reaches one provider and a mixed one
     reaches both into a single inventory.
@@ -87,6 +87,7 @@ options:
 requirements:
   - google.cloud collection, google-auth and requests for gcp
   - amazon.aws collection and botocore for aws
+  - azure.azcollection collection and its Python requirements for azure
 notes:
   - C(ansible_port) is deliberately not composed here. Host variables from an
     inventory plugin outrank the C(group_vars) of the same inventory, and the
@@ -113,6 +114,7 @@ cache_timeout: 300
 DELEGATES = {
     "gcp": "google.cloud.gcp_compute",
     "aws": "amazon.aws.aws_ec2",
+    "azure": "azure.azcollection.azure_rm",
 }
 
 display = Display()
@@ -136,7 +138,11 @@ class InventoryModule(BaseInventoryPlugin, Cacheable):
             raise AnsibleParserError("the oilscope inventory plugin requires PyYAML")
 
         config = self._load_project_config(path)
-        builders = {"gcp": self._gcp_settings, "aws": self._aws_settings}
+        builders = {
+            "gcp": self._gcp_settings,
+            "aws": self._aws_settings,
+            "azure": self._azure_settings,
+        }
         generated = {}
 
         try:
@@ -320,9 +326,55 @@ class InventoryModule(BaseInventoryPlugin, Cacheable):
             },
         }
 
+    def _azure_settings(self, config):
+        name_prefix = self._require(config, "name_prefix")
+        environment = self._require(config, "environment")
+        subscription = os.environ.get("ARM_SUBSCRIPTION_ID") or config.get("azure", {}).get(
+            "subscription_id"
+        )
+
+        bastion_role = plain(self.get_option("bastion_role"))
+
+        role = "tags.role | default('')"
+        is_bastion = f"{role} == '{bastion_role}'"
+        public = (
+            "(public_ipv4_addresses | default(public_ipv4_address | default([]), true)"
+            " | select | list + ['']) | first"
+        )
+        private = "private_ipv4_addresses | first"
+
+        settings = {
+            "plugin": DELEGATES["azure"],
+            "auth_source": "auto",
+            "include_vm_resource_groups": [f"{plain(name_prefix)}-{plain(environment)}-rg"],
+            "plain_host_names": True,
+            "keyed_groups": [{"key": role, "prefix": "", "separator": ""}],
+            "conditional_groups": {
+                "cloud_azure": "true",
+                "workloads": f"{role} not in ['', '{bastion_role}']",
+            },
+            "exclude_host_filters": [
+                f"tags.application | default('') != '{plain(name_prefix)}'",
+                f"tags.environment | default('') != '{plain(environment)}'",
+                "powerstate != 'running'",
+            ],
+            "compose": {
+                "internal_ip": private,
+                "public_ip": public,
+                "ansible_host": f"({public}) if {is_bastion} else ({private})",
+                "oilscope_role": role,
+                "oilscope_cloud": "'azure'",
+            },
+        }
+
+        if subscription:
+            settings["subscription_id"] = plain(subscription)
+
+        return settings
+
     def _write_settings(self, cloud, settings):
         digest = hashlib.sha256(json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()
-        suffix = "gcp.yml" if cloud == "gcp" else "aws_ec2.yml"
+        suffix = {"gcp": "gcp.yml", "aws": "aws_ec2.yml", "azure": "azure_rm.yml"}[cloud]
         generated = os.path.join(tempfile.gettempdir(), f"oilscope-{digest[:16]}.{suffix}")
 
         try:

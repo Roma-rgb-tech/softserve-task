@@ -14,3 +14,6 @@ collections:
   # for VMs in AWS.
   - name: amazon.aws
     version: ">=9.0.0"
+
+  - name: azure.azcollection
+    version: ">=3.0.0"

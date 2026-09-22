@@ -17,6 +17,12 @@ password itself and keeps it in a container of its own. Terraform never saw it.
 The role reads that container and copies the value into the project's own, which
 is what `resolve_secrets` and the compose environment already read.
 
+**Azure.** Terraform creates the flexible server with a throwaway administrator
+password it never stores. The administrator login is `database.username`, and
+the role finds the stand's Key Vault in its resource group and sets the real
+password from it through Azure Resource Manager, again in a request body. A
+secret still holding Terraform's placeholder stops the run.
+
 Either way the services read one container, and Terraform reads none. Running it
 again sets the same password again: that is how a rotated secret reaches the
 instance, and how a half-finished earlier run is repaired.
@@ -25,5 +31,5 @@ instance, and how a half-finished earlier run is repaired.
 
 - `managed_database_config_file` (required): the project configuration, the same
   file Terraform reads.
-- `managed_database_gcloud`, `managed_database_aws`: the CLIs to call.
+- `managed_database_gcloud`, `managed_database_aws`, `managed_database_az`: the CLIs to call.
 - `managed_database_api`: Cloud SQL Admin API base URL.
