@@ -17,7 +17,7 @@
       - ec2
       - -s
       - -c
-      - file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+      - "file:{{ monitoring_agent_cloudwatch_source }}"
   changed_when: true
 
 - name: Restart rsyslog
