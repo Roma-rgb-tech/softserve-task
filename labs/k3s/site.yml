@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Bring up the server first, so the agents have a token to join with
+  hosts: k3s_server
+  gather_facts: true
+  roles:
+    - k3s
+
+- name: Join the agents
+  hosts: k3s_agent
+  gather_facts: true
+  serial: 1
+  roles:
+    - k3s

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Work out the role of this node
+  ansible.builtin.set_fact:
+    k3s_role: "{{ 'server' if inventory_hostname in groups[k3s_server_group] else 'agent' }}"
+    k3s_service: "{{ 'k3s' if inventory_hostname in groups[k3s_server_group] else 'k3s-agent' }}"
+    k3s_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+
+- name: Refuse to run with more than one server
+  ansible.builtin.fail:
+    msg: >-
+      This lab runs a single server with the embedded SQLite datastore.
+      Put exactly one host in {{ k3s_server_group }}.
+  when: groups[k3s_server_group] | default([]) | length != 1
+  run_once: true
+
+- name: Install the binary and the node prerequisites
+  ansible.builtin.include_tasks: install.yml
+
+- name: Configure and start the server
+  ansible.builtin.include_tasks: server.yml
+  when: k3s_role == 'server'
+
+- name: Configure and start the agent
+  ansible.builtin.include_tasks: agent.yml
+  when: k3s_role == 'agent'
