@@ -7,7 +7,7 @@ locals {
 
   database_cidrs = lookup(var.config.network, "database_subnet_cidrs", [])
 
-  enabled = local.in_use && lookup(local.settings, "managed", false) && length(local.database_cidrs) > 0 ? 1 : 0
+  enabled = local.in_use && lookup(local.settings, "managed", false) && lookup(local.settings, "cloud", local.default) == local.cloud && length(local.database_cidrs) > 0 ? 1 : 0
 
   sku_name = lookup(lookup(lookup(var.config.catalog, "db_size", {}), local.cloud, {}), lookup(local.settings, "size", "micro"), null)
   port     = var.config.service_ports.postgresql
@@ -15,6 +15,8 @@ locals {
   storage_sizes_mb = [32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304]
   requested_mb     = lookup(local.settings, "storage_gb", 32) * 1024
   storage_mb       = [for size in local.storage_sizes_mb : size if size >= local.requested_mb][0]
+
+  extensions = ["HSTORE", "PGCRYPTO", "PG_CRON"]
 
   backup_retention_days = max(7, min(35, lookup(local.settings, "backup_retention_days", 7)))
 

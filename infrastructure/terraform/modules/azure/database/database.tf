@@ -127,7 +127,7 @@ resource "azurerm_postgresql_flexible_server_configuration" "extensions" {
 
   name      = "azure.extensions"
   server_id = azurerm_postgresql_flexible_server.main[0].id
-  value     = "PG_CRON"
+  value     = join(",", local.extensions)
 }
 
 resource "azurerm_postgresql_flexible_server_configuration" "cron_database" {
