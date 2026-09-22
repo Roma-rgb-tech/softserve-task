@@ -41,7 +41,9 @@
 - name: Install Tailscale
   become: true
   ansible.builtin.apt:
-    name: tailscale
+    name:
+      - tailscale
+      - iptables
     state: present
     update_cache: true
 
@@ -71,6 +73,37 @@
     name: tailscaled
     enabled: true
     state: started
+
+- name: Clamp the TCP segment size of connections forwarded through the tailnet
+  become: true
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ tailnet_mss_unit }}"
+    content: |
+      [Unit]
+      Description=Clamp the TCP MSS of connections forwarded through {{ tailnet_interface }}
+      After=tailscaled.service
+      Wants=tailscaled.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=true
+      ExecStart=/bin/sh -c 'for d in -o -i; do iptables -t mangle -C FORWARD $$d {{ tailnet_interface }} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -t mangle -A FORWARD $$d {{ tailnet_interface }} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu; done'
+      ExecStop=/bin/sh -c 'for d in -o -i; do iptables -t mangle -D FORWARD $$d {{ tailnet_interface }} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true; done'
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: "0644"
+  register: tailnet_mss
+
+- name: Keep the clamping in place across reboots
+  become: true
+  ansible.builtin.systemd_service:
+    name: "{{ tailnet_mss_unit }}"
+    enabled: true
+    state: "{{ 'restarted' if tailnet_mss is changed else 'started' }}"
+    daemon_reload: "{{ tailnet_mss is changed }}"
 
 - name: Ask the daemon whether this node is already on the tailnet
   become: true

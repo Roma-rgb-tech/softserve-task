@@ -177,6 +177,14 @@ parameter group carrying `shared_preload_libraries = pg_cron` on RDS. Both also
 set `cron.database_name` to the application database, because the default is
 `postgres` and the job would otherwise be scheduled in the wrong place.
 
+Azure Flexible Server is stricter: a user may create only the extensions listed
+in the `azure.extensions` server parameter, and the list is empty by default.
+Terraform sets it to `HSTORE,PGCRYPTO,PG_CRON`, exactly what the migrations
+create; without it `003_create_ui_sessions.sql` stops with `extension
+"pgcrypto" is not allow-listed`. `cron.database_name` is set the same way as on
+the other clouds; it is a static parameter, and the azurerm provider restarts
+the server to apply it.
+
 ## What the account plan can refuse
 
 `backup_retention_days` is passed straight through to both clouds, and AWS
