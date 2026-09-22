@@ -99,7 +99,7 @@ resource "azurerm_postgresql_flexible_server" "main" {
   ]
 
   lifecycle {
-    ignore_changes = [zone]
+    ignore_changes = [zone, tags["oilscope_password_version"]]
 
     precondition {
       condition     = local.sku_name != null

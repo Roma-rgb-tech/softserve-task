@@ -131,7 +131,7 @@
       - --subscription
       - "{{ managed_database_subscription }}"
       - --query
-      - contentType
+      - "[contentType, id]"
       - --output
       - tsv
   register: managed_database_content_type
@@ -144,7 +144,7 @@
       {{ managed_database_settings.password_secret }} in
       {{ managed_database_key_vault }} still holds the placeholder Terraform
       created. Add the real value with the secret-version script first.
-  when: managed_database_content_type.stdout | trim == 'unset'
+  when: (managed_database_content_type.stdout | trim).split() | first | default('') == 'unset'
 
 - name: Refuse to set an empty password
   ansible.builtin.fail:
@@ -172,6 +172,28 @@
   check_mode: false
   no_log: true
 
+# The server cannot say which password it holds, so it carries the Key Vault
+# version it was last given in a tag. A run whose secret version matches the
+# tag leaves the server alone; a new version is applied once and recorded.
+- name: Read which secret version the server was last given
+  ansible.builtin.uri:
+    url: "{{ managed_database_server_url }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
+    status_code: 200
+  register: managed_database_server
+  check_mode: false
+  no_log: true
+
+- name: Compare it with the version the key vault serves
+  ansible.builtin.set_fact:
+    managed_database_secret_version: >-
+      {{ (managed_database_content_type.stdout | trim).split() | last | default('')
+         | regex_replace('^.*/', '') }}
+    managed_database_server_tags: >-
+      {{ managed_database_server.json.tags | default({}) }}
+
 - name: Set the administrator password of the server
   ansible.builtin.uri:
     url: "{{ managed_database_server_url }}"
@@ -180,10 +202,17 @@
       Authorization: "Bearer {{ managed_database_token.stdout | trim }}"
     body_format: json
     body:
+      tags: >-
+        {{ managed_database_server_tags
+           | combine({managed_database_version_tag: managed_database_secret_version}) }}
       properties:
         administratorLoginPassword: "{{ managed_database_password.stdout | trim }}"
     status_code: [200, 202]
-  when: not ansible_check_mode
+  register: managed_database_patch
+  when:
+    - not ansible_check_mode
+    - managed_database_server_tags[managed_database_version_tag] | default('')
+      != managed_database_secret_version
   changed_when: true
   no_log: true
 
@@ -198,7 +227,7 @@
   until: managed_database_state.json.properties.state | default('') == 'Ready'
   retries: "{{ managed_database_ready_retries }}"
   delay: "{{ managed_database_ready_delay }}"
-  when: not ansible_check_mode
+  when: managed_database_patch is changed
   changed_when: false
   no_log: true
 
@@ -206,5 +235,6 @@
   ansible.builtin.debug:
     msg: >-
       {{ managed_database_settings.username }} on {{ managed_database_instance }}
-      now authenticates with the value in
+      {{ 'now authenticates' if managed_database_patch is changed else 'already authenticates' }}
+      with version {{ managed_database_secret_version }} of
       {{ managed_database_key_vault }}/{{ managed_database_settings.password_secret }}

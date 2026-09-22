@@ -5,6 +5,7 @@
     secret_versions_targets: >-
       {{ secret_versions_catalog | selectattr('clouds', 'contains', 'aws') | list }}
     secret_versions_present: []
+    secret_versions_unchanged: []
 
 - name: Resolve the target region
   ansible.builtin.set_fact:
@@ -104,16 +105,60 @@
          | list }}
   when: secret_versions_unavailable | length > 0
 
+# A value in the environment is written only when it differs from what the
+# container already serves. Writing the same value again adds a version and
+# reports a change on every run, although nothing the workloads read moved.
+# A container that cannot be read is written, as before.
+- name: Read the value each supplied container serves
+  ansible.builtin.command:
+    argv:
+      - "{{ secret_versions_aws }}"
+      - secretsmanager
+      - get-secret-value
+      - --secret-id
+      - "{{ item.secret_id }}"
+      - --region
+      - "{{ secret_versions_aws_region }}"
+      - --query
+      - SecretString
+      - --output
+      - text
+  loop: >-
+    {{ secret_versions_targets
+       | selectattr('secret_id', 'in', secret_versions_supplied | default([]))
+       | list }}
+  loop_control:
+    label: "{{ item.secret_id }}"
+  register: secret_versions_current
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Note the containers that already serve the supplied value
+  ansible.builtin.set_fact:
+    secret_versions_unchanged: >-
+      {{ secret_versions_unchanged | default([])
+         + ([item.item.secret_id]
+            if item.rc == 0
+               and (item.stdout | default('') | trim)
+                   == (lookup('ansible.builtin.env', item.item.variable) | trim)
+            else []) }}
+  loop: "{{ secret_versions_current.results | default([]) }}"
+  no_log: true
+
 - name: Choose the containers that get a new version
   ansible.builtin.set_fact:
     secret_versions_writes: >-
       {{ secret_versions_targets
-         | rejectattr('secret_id', 'in', secret_versions_present) | list }}
+         | rejectattr('secret_id', 'in', secret_versions_present)
+         | rejectattr('secret_id', 'in', secret_versions_unchanged | default([]))
+         | list }}
 
 - name: Report the containers that are left alone
   ansible.builtin.debug:
     msg: "{{ item }} already holds a value in aws, leaving it alone"
-  loop: "{{ secret_versions_present }}"
+  loop: "{{ secret_versions_present + (secret_versions_unchanged | default([])) }}"
 
 # file:///dev/stdin makes the AWS CLI read the payload from stdin, so the value
 # never becomes a command argument and cannot appear in ps output or a shell

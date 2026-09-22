@@ -14,6 +14,70 @@
       managed database from this machine.
   when: message_queue_database_host | length == 0
 
+# RABBITMQ_DEFAULT_PASS is applied only while the data volume is empty, so a
+# broker that outlives a password change keeps the old one and refuses every
+# client. The host keeps a SHA-256 of the password the volume was built with.
+# When it differs from the current password, or is missing while a volume
+# exists, the broker and its volume are recreated. The queue holds only
+# in-flight fetch results, which the next scheduled fetch produces again.
+- name: Read the fingerprint of the password the broker volume was built with
+  ansible.builtin.slurp:
+    src: "{{ message_queue_password_marker }}"
+  register: message_queue_marker
+  failed_when: false
+  no_log: true
+
+- name: Look for the broker volume
+  ansible.builtin.command:
+    argv:
+      - docker
+      - volume
+      - inspect
+      - "{{ message_queue_compose_project_name }}_{{ message_queue_volume }}"
+  register: message_queue_volume_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Compare the fingerprint with the current password
+  ansible.builtin.set_fact:
+    message_queue_password_fingerprint: "{{ message_queue_password | hash('sha256') }}"
+    message_queue_password_stale: >-
+      {{ message_queue_volume_state.rc == 0
+         and ((message_queue_marker.content | default('') | b64decode | trim)
+              != (message_queue_password | hash('sha256'))) }}
+  no_log: true
+
+- name: Remove the broker built with another password
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ message_queue_compose_project_name }}"
+      - --file
+      - "{{ message_queue_compose_file }}"
+      - rm
+      - --stop
+      - --force
+      - "{{ message_queue_service }}"
+  args:
+    chdir: "{{ message_queue_compose_project_dir }}"
+  environment: "{{ message_queue_runtime_environment }}"
+  when: message_queue_password_stale | bool
+  changed_when: true
+  no_log: true
+
+- name: Remove the broker volume built with another password
+  ansible.builtin.command:
+    argv:
+      - docker
+      - volume
+      - rm
+      - "{{ message_queue_compose_project_name }}_{{ message_queue_volume }}"
+  when: message_queue_password_stale | bool
+  changed_when: true
+
 - name: Start the broker
   ansible.builtin.command:
     argv:
@@ -69,8 +133,38 @@
   changed_when: false
   retries: "{{ message_queue_health_retries }}"
   delay: "{{ message_queue_health_delay }}"
-  until: message_queue_health.stdout | trim in ['healthy', 'unhealthy']
-  failed_when: message_queue_health.stdout | trim == 'unhealthy'
+  until: message_queue_health.stdout | trim == 'healthy'
+  failed_when: false
+
+- name: Read the broker log when it did not become healthy
+  ansible.builtin.command:
+    argv:
+      - docker
+      - logs
+      - --tail
+      - "{{ message_queue_failure_log_lines }}"
+      - "{{ message_queue_container.stdout | trim }}"
+  register: message_queue_log
+  changed_when: false
+  failed_when: false
+  when: message_queue_health.stdout | trim != 'healthy'
+
+- name: Refuse to continue with an unhealthy broker
+  ansible.builtin.fail:
+    msg: >-
+      The broker is {{ message_queue_health.stdout | trim }} after
+      {{ message_queue_health_retries | int * message_queue_health_delay | int }}
+      seconds. Last log lines: {{ (message_queue_log.stdout_lines | default([]))[-20:] }}
+  when: message_queue_health.stdout | trim != 'healthy'
+
+- name: Record the fingerprint of the password the broker runs with
+  ansible.builtin.copy:
+    dest: "{{ message_queue_password_marker }}"
+    content: "{{ message_queue_password_fingerprint }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
 
 - name: Apply database migrations
   ansible.builtin.command:
