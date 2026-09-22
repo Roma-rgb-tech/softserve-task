@@ -36,7 +36,7 @@ resource "azurerm_monitor_data_collection_rule" "vms" {
       streams                       = ["Microsoft-Perf"]
       sampling_frequency_in_seconds = 60
       counter_specifiers = [
-        "\\Processor Information(_Total)\\% Processor Time",
+        "\\Processor(*)\\% Processor Time",
         "\\Memory\\% Used Memory",
         "\\Logical Disk(*)\\% Used Space",
       ]
