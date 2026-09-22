@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+galaxy_info:
+  author: Push and Pray team
+  description: Joins a bastion to the tailnet as the subnet router of its cloud
+  license: GPL-2.0-or-later
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - tailscale
+    - networking
+
+dependencies: []

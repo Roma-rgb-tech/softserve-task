@@ -76,5 +76,43 @@ locals {
     }
   }
 
-  active_rules = { for name, rule in local.rules : name => rule if rule.enabled }
+  tailnet_rules = {
+    "tailnet-direct" = {
+      enabled       = local.has_bastion && local.tailnet
+      source_ranges = ["0.0.0.0/0"]
+      source_tags   = null
+      target_tags   = [local.tags.bastion]
+      allow         = [{ protocol = "udp", ports = ["41641"] }]
+    }
+
+    "tailnet-forward" = {
+      enabled       = local.has_bastion && local.tailnet
+      source_ranges = [var.config.network.management_subnet_cidr, var.config.network.workload_subnet_cidr]
+      source_tags   = null
+      target_tags   = [local.tags.bastion]
+      allow         = [{ protocol = "tcp", ports = null }, { protocol = "udp", ports = null }, { protocol = "icmp", ports = null }]
+    }
+
+    "tailnet-infra" = {
+      enabled       = local.has_bastion && local.tailnet
+      source_ranges = null
+      source_tags   = [local.tags.bastion]
+      target_tags   = [local.tags.infra]
+      allow = [{ protocol = "tcp", ports = [
+        tostring(var.config.service_ports.postgresql),
+        tostring(lookup(var.config.service_ports, "amqp", 5672)),
+        tostring(lookup(var.config.service_ports, "redis", 6379)),
+      ] }]
+    }
+
+    "tailnet-history" = {
+      enabled       = local.has_bastion && local.tailnet
+      source_ranges = null
+      source_tags   = [local.tags.bastion]
+      target_tags   = [local.tags.history]
+      allow         = [{ protocol = "tcp", ports = [tostring(var.config.service_ports.history_api)] }]
+    }
+  }
+
+  active_rules = { for name, rule in merge(local.rules, local.tailnet_rules) : name => rule if rule.enabled }
 }

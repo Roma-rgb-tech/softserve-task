@@ -5,4 +5,5 @@ locals {
   token    = lookup(var.config, "default_region", "")
   zone     = lookup(lookup(var.config.catalog.zone, local.cloud, {}), local.token, null)
   selected = { for n, vm in var.config.vms : n => vm if lookup(vm, "cloud", local.default) == local.cloud }
+  tailnet  = contains(keys(var.config), "tailscale")
 }

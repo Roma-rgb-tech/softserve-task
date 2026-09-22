@@ -1,0 +1,193 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Read the project configuration
+  ansible.builtin.set_fact:
+    tailnet_config: >-
+      {{ lookup('ansible.builtin.file', tailnet_config_path) | from_json }}
+
+- name: Work out this bastion's network and tailnet
+  ansible.builtin.set_fact:
+    tailnet_settings: "{{ tailnet_config.tailscale | default({}) }}"
+    tailnet_route: >-
+      {{ ((tailnet_config.network.clouds | default({}))[oilscope_cloud] | default({})).vpc_cidr
+         | default(tailnet_config.network.vpc_cidr) }}
+
+- name: Refuse to continue without a Tailscale API access token
+  ansible.builtin.fail:
+    msg: >-
+      ${{ tailnet_api_key_variable }} is empty. Create an API access token in
+      the Tailscale admin console and export it before deploying; it is read
+      from the environment and never written anywhere.
+  when: lookup('ansible.builtin.env', tailnet_api_key_variable) | length == 0
+
+- name: Trust the Tailscale package signing key
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ tailnet_repository }}/{{ tailnet_repository_release }}.noarmor.gpg"
+    dest: "{{ tailnet_keyring }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Tailscale package repository
+  become: true
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by={{ tailnet_keyring }}]
+      {{ tailnet_repository }} {{ tailnet_repository_release }} main
+    filename: tailscale
+    state: present
+
+- name: Install Tailscale
+  become: true
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+
+- name: Let the kernel forward packets between the tailnet and this network
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-oilscope-tailnet.conf
+    content: |
+      net.ipv4.ip_forward = 1
+    owner: root
+    group: root
+    mode: "0644"
+  register: tailnet_sysctl
+
+- name: Apply the forwarding setting
+  become: true
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - --load=/etc/sysctl.d/99-oilscope-tailnet.conf
+  when: tailnet_sysctl is changed
+  changed_when: true
+
+- name: Start the Tailscale daemon
+  become: true
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Ask the daemon whether this node is already on the tailnet
+  become: true
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - status
+      - --json
+  register: tailnet_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Note whether the node is logged in
+  ansible.builtin.set_fact:
+    tailnet_joined: >-
+      {{ tailnet_status.rc == 0
+         and (tailnet_status.stdout | from_json).BackendState | default('') == 'Running' }}
+
+- name: Create a single-use auth key for this bastion
+  ansible.builtin.uri:
+    url: "{{ tailnet_api }}/tailnet/{{ tailnet_settings.tailnet | default('-') }}/keys"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ lookup('ansible.builtin.env', tailnet_api_key_variable) }}"
+    body_format: json
+    body:
+      description: "{{ inventory_hostname[:50] }}"
+      expirySeconds: "{{ tailnet_auth_key_ttl_seconds | int }}"
+      capabilities:
+        devices:
+          create:
+            reusable: false
+            ephemeral: false
+            preauthorized: true
+    status_code: 200
+    return_content: true
+  register: tailnet_auth_key
+  delegate_to: localhost
+  become: false
+  when: not tailnet_joined
+  no_log: true
+
+- name: Join the tailnet
+  become: true
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - up
+      - --auth-key=file:/dev/stdin
+      - "--hostname={{ inventory_hostname }}"
+      - "--advertise-routes={{ tailnet_route | trim }}"
+      - --accept-routes
+      - --snat-subnet-routes=true
+    stdin: "{{ (tailnet_auth_key.content | from_json).key }}"
+    stdin_add_newline: false
+  when: not tailnet_joined
+  changed_when: true
+  no_log: true
+
+- name: Keep the advertised route and accepted routes in line with the configuration
+  become: true
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - set
+      - "--advertise-routes={{ tailnet_route | trim }}"
+      - --accept-routes
+      - --snat-subnet-routes=true
+  when: tailnet_joined
+  changed_when: false
+
+- name: Read this node's identifier
+  become: true
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - status
+      - --json
+  register: tailnet_self
+  changed_when: false
+  check_mode: false
+
+- name: Approve the route this bastion advertises
+  ansible.builtin.uri:
+    url: "{{ tailnet_api }}/device/{{ (tailnet_self.stdout | from_json).Self.ID }}/routes"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ lookup('ansible.builtin.env', tailnet_api_key_variable) }}"
+    body_format: json
+    body:
+      routes:
+        - "{{ tailnet_route | trim }}"
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  no_log: true
+
+- name: Keep the subnet router's node key from expiring
+  ansible.builtin.uri:
+    url: "{{ tailnet_api }}/device/{{ (tailnet_self.stdout | from_json).Self.ID }}/key"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ lookup('ansible.builtin.env', tailnet_api_key_variable) }}"
+    body_format: json
+    body:
+      keyExpiryDisabled: true
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: tailnet_settings.key_expiry_disabled | default(true) | bool
+  no_log: true
+
+- name: Report the subnet router
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} routes {{ tailnet_route | trim }} into the tailnet
+      as {{ (tailnet_self.stdout | from_json).Self.TailscaleIPs | first }}

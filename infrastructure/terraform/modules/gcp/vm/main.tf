@@ -5,6 +5,7 @@ resource "google_compute_instance" "workload" {
   machine_type              = each.value.machine_type
   zone                      = local.zone
   allow_stopping_for_update = true
+  can_ip_forward            = each.value.role == "bastion" && local.tailnet
 
   tags   = each.value.tags
   labels = each.value.labels

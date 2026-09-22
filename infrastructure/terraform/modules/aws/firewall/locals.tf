@@ -6,4 +6,5 @@ locals {
   enabled  = length(local.selected) > 0
   managed  = lookup(lookup(var.config, "database", {}), "managed", false)
   cached   = lookup(lookup(var.config, "sessions", {}), "backend", "postgresql") == "redis"
+  tailnet  = contains(keys(var.config), "tailscale")
 }

@@ -66,3 +66,11 @@ module "database" {
   subnet_ids      = module.network.database_subnet_ids
   security_groups = module.firewall.security_groups
 }
+
+module "tailnet" {
+  source = "./tailnet"
+
+  config          = var.config
+  route_table_ids = module.routing.route_table_ids
+  next_hop        = module.vm.bastion_interface_id
+}

@@ -27,6 +27,7 @@ resource "aws_instance" "workload" {
   instance_type = each.value.machine_type
 
   subnet_id              = each.value.public_subnet ? var.subnets.management : var.subnets.workload
+  source_dest_check      = !(each.value.role == "bastion" && local.tailnet)
   private_ip             = each.value.internal_ip
   vpc_security_group_ids = [for role in each.value.network_tags : var.security_groups[role]]
   iam_instance_profile   = var.instance_profiles[each.key]

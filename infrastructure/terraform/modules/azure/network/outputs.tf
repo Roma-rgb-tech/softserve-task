@@ -30,7 +30,10 @@ output "database_subnet_id" {
 
 output "client_cidrs" {
   description = "Ranges allowed to reach the database: the workload subnet only. The bastion reaches it through a workload, as on the other clouds."
-  value       = local.count == 1 ? [var.config.network.workload_subnet_cidr] : []
+  value = local.count == 1 ? concat(
+    [var.config.network.workload_subnet_cidr],
+    contains(keys(var.config), "tailscale") ? [var.config.network.management_subnet_cidr] : [],
+  ) : []
 }
 
 output "virtual_network_name" {

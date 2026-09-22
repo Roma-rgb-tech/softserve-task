@@ -7,4 +7,5 @@ locals {
   managed  = lookup(lookup(var.config, "database", {}), "managed", false)
   cached   = lookup(lookup(var.config, "sessions", {}), "backend", "postgresql") == "redis"
   tags     = { for role in local.roles : role => "${local.prefix}-${role}" }
+  tailnet  = contains(keys(var.config), "tailscale")
 }

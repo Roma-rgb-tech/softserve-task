@@ -20,9 +20,9 @@ output "regions" {
   value       = { for cloud, region in local.regions : cloud => region if region != null }
 }
 
-output "bastion_public_ip" {
-  description = "Bastion public IP."
-  value       = one([for name, vm in local.vms : vm.public_ip if vm.role == "bastion"])
+output "bastion_public_ips" {
+  description = "Bastion public IP by cloud."
+  value       = { for name, vm in local.vms : vm.cloud => vm.public_ip if vm.role == "bastion" }
 }
 
 output "workload_vm_names" {

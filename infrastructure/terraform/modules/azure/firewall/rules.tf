@@ -74,6 +74,22 @@ locals {
       }
     },
     {
+      for port in local.has_bastion && local.tailnet ? [
+        local.ports.postgresql, local.amqp_port, local.redis_port
+      ] : [] :
+      "tailnet-infra/${port}" => {
+        group = "infra", cidr = null, source_group = "bastion"
+        port  = port
+      }
+    },
+    {
+      for name in local.has_bastion && local.tailnet ? ["tailnet-history"] : [] :
+      name => {
+        group = "history", cidr = null, source_group = "bastion"
+        port  = local.ports.history_api
+      }
+    },
+    {
       for name in local.enabled ? ["history-api"] : [] :
       name => {
         group = "history", cidr = null, source_group = "ui"

@@ -6,7 +6,7 @@ locals {
   location = lookup(lookup(var.config.catalog.region, local.cloud, {}), local.token, null)
   count    = contains(keys(var.config), local.cloud) || anytrue([for vm in var.config.vms : lookup(vm, "cloud", local.default) == local.cloud]) ? 1 : 0
 
-  managed_database = lookup(lookup(var.config, "database", {}), "managed", false)
+  managed_database = lookup(lookup(var.config, "database", {}), "managed", false) && lookup(lookup(var.config, "database", {}), "cloud", local.default) == local.cloud
   database_cidrs   = lookup(var.config.network, "database_subnet_cidrs", [])
   database_count   = local.count == 1 && local.managed_database && length(local.database_cidrs) > 0 ? 1 : 0
 

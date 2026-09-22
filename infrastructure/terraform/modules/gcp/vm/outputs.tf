@@ -17,3 +17,8 @@ output "region" {
   description = "Provider region this cloud deployed into, or null when it created nothing."
   value       = length(local.selected) > 0 ? lookup(lookup(var.config.catalog.region, local.cloud, {}), local.token, null) : null
 }
+
+output "bastion_instance" {
+  description = "Self link of the bastion, the next hop for the ranges of the other clouds when the tailnet joins them."
+  value       = one([for name, instance in google_compute_instance.workload : instance.self_link if local.vms[name].role == "bastion"])
+}
