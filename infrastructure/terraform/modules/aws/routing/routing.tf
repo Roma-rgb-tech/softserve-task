@@ -29,17 +29,16 @@ resource "aws_route_table" "this" {
 
   vpc_id = var.vpc_id
 
-  dynamic "route" {
-    for_each = each.value.routes
-
-    content {
-      cidr_block     = route.value.cidr_block
-      gateway_id     = route.value.gateway_id
-      nat_gateway_id = route.value.nat_gateway_id
-    }
-  }
-
   tags = merge(local.tags, { Name = "${local.prefix}-${each.key}-rt" })
+}
+
+resource "aws_route" "default" {
+  for_each = local.route_tables
+
+  route_table_id         = aws_route_table.this[each.key].id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = each.value.gateway_id
+  nat_gateway_id         = each.value.nat_gateway_id
 }
 
 resource "aws_route_table_association" "this" {

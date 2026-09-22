@@ -10,3 +10,6 @@ tailnet_repository_release: noble
 tailnet_keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
 
 tailnet_auth_key_ttl_seconds: 600
+
+tailnet_interface: tailscale0
+tailnet_mss_unit: oilscope-tailnet-mss.service

@@ -16,6 +16,8 @@ locals {
   requested_mb     = lookup(local.settings, "storage_gb", 32) * 1024
   storage_mb       = [for size in local.storage_sizes_mb : size if size >= local.requested_mb][0]
 
+  extensions = ["HSTORE", "PGCRYPTO", "PG_CRON"]
+
   backup_retention_days = max(7, min(35, lookup(local.settings, "backup_retention_days", 7)))
 
   tags = merge({
