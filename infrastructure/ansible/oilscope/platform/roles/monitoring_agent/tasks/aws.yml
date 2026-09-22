@@ -14,11 +14,23 @@
   ansible.builtin.apt:
     deb: /usr/local/src/amazon-cloudwatch-agent.deb
 
+- name: Create the directory for the CloudWatch agent source configuration
+  become: true
+  ansible.builtin.file:
+    path: "{{ monitoring_agent_cloudwatch_source | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# fetch-config consumes the file it is given and rewrites the agent's own
+# etc directory, so a template kept there differs on every run. The source
+# lives outside the agent's tree and is only read by fetch-config.
 - name: Configure the CloudWatch agent
   become: true
   ansible.builtin.template:
     src: cloudwatch-agent.json.j2
-    dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    dest: "{{ monitoring_agent_cloudwatch_source }}"
     owner: root
     group: root
     mode: "0644"
