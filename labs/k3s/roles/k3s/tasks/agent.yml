@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0-or-later
+ # SPDX-License-Identifier: GPL-2.0-or-later
 ---
 - name: Hand the agent the join token
   become: true
@@ -46,7 +46,7 @@
       - kubectl
       - get
       - node
-      - "{{ ansible_hostname }}"
+      - "{{ ansible_facts['hostname'] }}"
       - -o
       - "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
   register: k3s_node_ready
@@ -59,5 +59,5 @@
 
 - name: Refuse to finish with an agent that did not join
   ansible.builtin.fail:
-    msg: "{{ ansible_hostname }} is not Ready on the server after the wait."
+    msg: "{{ ansible_facts['hostname'] }} is not Ready on the server after the wait."
   when: k3s_node_ready.stdout != 'True'

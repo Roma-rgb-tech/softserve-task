@@ -4,7 +4,7 @@
   ansible.builtin.set_fact:
     k3s_role: "{{ 'server' if inventory_hostname in groups[k3s_server_group] else 'agent' }}"
     k3s_service: "{{ 'k3s' if inventory_hostname in groups[k3s_server_group] else 'k3s-agent' }}"
-    k3s_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+    k3s_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
 
 - name: Refuse to run with more than one server
   ansible.builtin.fail:
