@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The first server starts etcd with cluster-init; every other server joins it
+# with the token it wrote. The keys that must agree across servers (the
+# disabled components, the certificate names) come from the same variables.
+- name: Hand a joining server the cluster token
+  become: true
+  ansible.builtin.copy:
+    content: "{{ hostvars[k3s_first_server].k3s_server_token.content | b64decode | trim }}"
+    dest: "{{ k3s_token_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart k3s
+  when: not k3s_first
+
+- name: Write the server configuration
+  become: true
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ k3s_config_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    k3s_common:
+      node-ip: "{{ k3s_node_ip }}"
+      tls-san: "{{ k3s_tls_sans }}"
+      disable: "{{ k3s_disable }}"
+      write-kubeconfig-mode: "0600"
+    k3s_external: "{{ {'node-external-ip': k3s_node_external_ip} if k3s_node_external_ip | length > 0 else {} }}"
+    k3s_join: >-
+      {{ {'cluster-init': true} if k3s_first else
+         {'server': 'https://' ~ k3s_server_address ~ ':' ~ k3s_api_port,
+          'token-file': k3s_token_file} }}
+    k3s_config: >-
+      {{ k3s_common | combine(k3s_external, k3s_join, k3s_extra_server_config) }}
+  notify: Restart k3s
+
+- name: Start the server
+  become: true
+  ansible.builtin.systemd_service:
+    name: k3s
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply a pending restart before anything talks to the API
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the API server to answer
+  become: true
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/k3s
+      - kubectl
+      - get
+      - --raw
+      - /readyz
+  register: k3s_readyz
+  until: k3s_readyz.rc == 0 and k3s_readyz.stdout == 'ok'
+  retries: "{{ k3s_ready_retries }}"
+  delay: "{{ k3s_ready_delay }}"
+  changed_when: false
+
+- name: Wait until the cluster lists this server as Ready
+  become: true
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/k3s
+      - kubectl
+      - get
+      - node
+      - "{{ ansible_facts['hostname'] }}"
+      - -o
+      - "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
+  register: k3s_server_ready
+  until: k3s_server_ready.stdout == 'True'
+  retries: "{{ k3s_ready_retries }}"
+  delay: "{{ k3s_ready_delay }}"
+  changed_when: false
+
+- name: Read the cluster token the other nodes join with
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ k3s_server_token_path }}"
+  register: k3s_server_token
+  no_log: true
+  when: k3s_first
+
+- name: Read the administrator kubeconfig
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ k3s_config_dir }}/k3s.yaml"
+  register: k3s_kubeconfig
+  no_log: true
+  when: k3s_first
+
+- name: Create the directory for the kubeconfig on the controller
+  ansible.builtin.file:
+    path: "{{ k3s_kubeconfig_dest | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  when: k3s_first
+
+- name: Save the kubeconfig on the controller, pointed at the API endpoint
+  ansible.builtin.copy:
+    content: >-
+      {{ k3s_kubeconfig.content | b64decode
+         | replace('https://127.0.0.1:' ~ k3s_api_port, 'https://' ~ k3s_api_endpoint ~ ':' ~ k3s_api_port)
+         | replace(': default', ': ' ~ oilscope_name_prefix | trim) }}
+    dest: "{{ k3s_kubeconfig_dest }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when: k3s_first
