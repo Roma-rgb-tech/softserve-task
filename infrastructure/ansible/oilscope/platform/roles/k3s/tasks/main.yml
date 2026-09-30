@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Work out the role of this node
+  ansible.builtin.set_fact:
+    k3s_role: "{{ 'server' if inventory_hostname in groups[k3s_server_group] else 'agent' }}"
+    k3s_service: "{{ 'k3s' if inventory_hostname in groups[k3s_server_group] else 'k3s-agent' }}"
+    k3s_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
+    k3s_first: "{{ inventory_hostname == k3s_first_server }}"
+
+# etcd elects a leader by majority. Two servers cannot outvote each other when
+# the link between them breaks, so they add a second point of failure instead
+# of removing one.
+- name: Refuse a server count that cannot form a quorum
+  ansible.builtin.fail:
+    msg: >-
+      {{ groups[k3s_server_group] | default([]) | length }} hosts carry the
+      k3s_server role. Use one server, or an odd number such as three, so etcd
+      can always find a majority.
+  when: (groups[k3s_server_group] | default([]) | length) is divisibleby 2
+  run_once: true
+
+- name: Install the binary and the node prerequisites
+  ansible.builtin.include_tasks: install.yml
+
+- name: Configure and start the server
+  ansible.builtin.include_tasks: server.yml
+  when: k3s_role == 'server'
+
+- name: Configure and start the agent
+  ansible.builtin.include_tasks: agent.yml
+  when: k3s_role == 'agent'

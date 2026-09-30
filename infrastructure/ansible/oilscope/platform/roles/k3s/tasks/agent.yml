@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Hand the agent the join token
+  become: true
+  ansible.builtin.copy:
+    content: "{{ hostvars[k3s_first_server].k3s_server_token.content | b64decode | trim }}"
+    dest: "{{ k3s_token_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart k3s
+
+- name: Write the agent configuration
+  become: true
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ k3s_config_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    k3s_external: "{{ {'node-external-ip': k3s_node_external_ip} if k3s_node_external_ip | length > 0 else {} }}"
+    k3s_config: >-
+      {{ {'server': 'https://' ~ k3s_server_address ~ ':' ~ k3s_api_port,
+          'token-file': k3s_token_file,
+          'node-ip': k3s_node_ip}
+         | combine(k3s_external, k3s_extra_agent_config) }}
+  notify: Restart k3s
+
+- name: Start the agent
+  become: true
+  ansible.builtin.systemd_service:
+    name: k3s-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply a pending restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait until the server lists this node as Ready
+  become: true
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/k3s
+      - kubectl
+      - get
+      - node
+      - "{{ ansible_facts['hostname'] }}"
+      - -o
+      - "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
+  register: k3s_node_ready
+  until: k3s_node_ready.stdout == 'True'
+  retries: "{{ k3s_ready_retries }}"
+  delay: "{{ k3s_ready_delay }}"
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ k3s_first_server }}"
+
+- name: Refuse to finish with an agent that did not join
+  ansible.builtin.fail:
+    msg: "{{ ansible_facts['hostname'] }} is not Ready on the server after the wait."
+  when: k3s_node_ready.stdout != 'True'

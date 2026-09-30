@@ -102,3 +102,10 @@ sudo k3s crictl ps
 multipass delete --purge k3s-server k3s-agent-1 k3s-agent-2
 rm -f kubeconfig
 ```
+
+## From the lab to the stand
+
+The role the stand uses is `oilscope.platform.k3s` in
+`infrastructure/ansible/oilscope/platform/roles/k3s`. It grew out of this one
+and adds several servers on embedded etcd, the addresses from the cloud
+inventory and a kubeconfig per stand. See `docs/k3s-cluster.md`.
