@@ -376,6 +376,13 @@ Two honest caveats:
   enough; it stays in the history. Rotate the credential at its source first,
   then clean up. See [`docs/secrets.md`](docs/secrets.md).
 
+- **The services run in k3s.** The VMs are a bastion per cloud and the
+  cluster's nodes; Traefik, cert-manager, CloudNativePG, Redis and Headlamp are
+  Helm releases installed from the controller, and the application's database
+  is a CloudNativePG cluster. The Compose deployment is at the
+  `snapshot/vm-compose` tag.
+  See [`docs/k3s-cluster.md`](docs/k3s-cluster.md).
+
 - **Monitoring is the cloud's own.** CPU, memory, disk, availability, 5xx
   responses and spend are watched by Cloud Monitoring and CloudWatch, with the
   alerts mailed from the same configuration on both sides. Nothing self-hosted.

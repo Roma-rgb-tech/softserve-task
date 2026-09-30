@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The k3s cluster and everything in it. The nodes are found by the role label
+# Terraform put on them: k3s_server and k3s_agent become inventory groups.
+#
+# Order matters. The first server initialises etcd, the others join it one at
+# a time so the quorum grows by one member at a time, and the agents come last.
+# Helm and the Kubernetes objects are applied from the controller, through the
+# kubeconfig the first server hands back.
+- name: Start the first k3s server
+  hosts: k3s_server[0]
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Refuse to run against a stand the inventory did not describe
+      ansible.builtin.assert:
+        that:
+          - oilscope_inventory_config | length == 0
+            or (oilscope_inventory_config | realpath) == (project_config_path | realpath)
+        fail_msg: >-
+          The inventory was built from {{ oilscope_inventory_config }} but the
+          playbook was given {{ project_config_path }}. The inventory plugin
+          reads $OILSCOPE_PROJECT_CONFIG and -e feeds only the playbook, so
+          these two select different stands. Export the matching
+          OILSCOPE_PROJECT_CONFIG before running.
+        quiet: true
+      vars:
+        oilscope_inventory_config: >-
+          {{ lookup('ansible.builtin.env', 'OILSCOPE_PROJECT_CONFIG') }}
+      become: false
+      delegate_to: localhost
+
+  roles:
+    - role: oilscope.platform.k3s
+
+- name: Join the other servers one at a time
+  hosts: k3s_server[1:]
+  become: true
+  gather_facts: true
+  serial: 1
+  any_errors_fatal: true
+  roles:
+    - role: oilscope.platform.k3s
+
+- name: Join the agents
+  hosts: k3s_agent
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: oilscope.platform.k3s
+
+# The first server's cloud identity may read the secrets mapped to it; the
+# values stay in memory and reach the cluster only as Kubernetes Secrets.
+- name: Read the values the cluster needs from the cloud secret store
+  hosts: k3s_server[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: oilscope.platform.resolve_secrets
+      vars:
+        resolve_secrets_config_path: "{{ project_config_path }}"
+
+- name: Install the platform layer and the application
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    oilscope_secrets: "{{ hostvars[oilscope_secrets_host].resolve_secrets_result | default({}) }}"
+  roles:
+    - role: oilscope.platform.cluster_platform
+      vars:
+        cluster_platform_cloudflare_token: "{{ oilscope_secrets.CF_DNS_API_TOKEN | default('') }}"
+        cluster_platform_acme_email: "{{ oilscope_public_endpoint.acme_email | default('') }}"
+
+    - role: oilscope.platform.cluster_app
+      vars:
+        cluster_app_secrets: "{{ oilscope_secrets }}"

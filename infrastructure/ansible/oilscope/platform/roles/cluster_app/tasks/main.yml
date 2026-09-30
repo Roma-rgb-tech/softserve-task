@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The application inside the cluster: its database as a CloudNativePG cluster,
+# Redis for sessions, the schema, the three services behind Traefik, and a
+# start page. Everything is applied from the controller.
+- name: Refuse to run without the values the cluster needs
+  ansible.builtin.assert:
+    that:
+      - cluster_app_secrets[item] | default('') | length > 0
+    fail_msg: >-
+      {{ item }} was not resolved. Map it in the secret_mappings of
+      {{ oilscope_secrets_host }} and make sure its container holds a value.
+    quiet: true
+  loop:
+    - POSTGRES_PASSWORD
+    - REDIS_PASSWORD
+    - GHCR_TOKEN
+    - OILPRICEAPI_KEY
+
+- name: Refuse to run without a public hostname
+  ansible.builtin.assert:
+    that:
+      - cluster_app_endpoint.hostname | default('') | length > 0
+    fail_msg: Give one k3s node a public_endpoint with the hostname the site answers on.
+    quiet: true
+
+# The password lands in URLs, where several characters mean something else.
+# urlencode leaves a slash alone, which is legal in a path but not here.
+- name: Build the connection strings
+  ansible.builtin.set_fact:
+    cluster_app_password_url: >-
+      {{ cluster_app_secrets.POSTGRES_PASSWORD | urlencode | replace('/', '%2F') }}
+    cluster_app_redis_password_url: >-
+      {{ cluster_app_secrets.REDIS_PASSWORD | urlencode | replace('/', '%2F') }}
+  no_log: true
+
+- name: Create the application namespace
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ cluster_app_namespace }}"
+
+- name: Hand the resolved values to the cluster as Secrets
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: secrets.yaml.j2
+  no_log: true
+
+- name: Install Redis for the UI sessions
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    name: "{{ cluster_app_redis_release }}"
+    chart_ref: "{{ cluster_app_redis_chart }}"
+    chart_version: "{{ cluster_app_redis_version }}"
+    release_namespace: "{{ cluster_app_namespace }}"
+    values_files:
+      - "{{ role_path }}/files/redis.yaml"
+    wait: true
+
+- name: Create the PostgreSQL cluster
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: database.yaml.j2
+
+- name: Wait for the primary and its replicas
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    api_version: postgresql.cnpg.io/v1
+    kind: Cluster
+    name: "{{ cluster_app_database_cluster }}"
+    namespace: "{{ cluster_app_namespace }}"
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: "{{ cluster_app_wait_timeout }}"
+
+# One Job per image: the migrations are idempotent, and a Job cannot change
+# its image, so a new build gets a new Job and an unchanged one is left alone.
+- name: Apply the database migrations
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: migrate.yaml.j2
+
+- name: Wait for the migrations to finish
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    api_version: batch/v1
+    kind: Job
+    name: "migrate-{{ cluster_app_image_tag[:12] }}"
+    namespace: "{{ cluster_app_namespace }}"
+    wait: true
+    wait_condition:
+      type: Complete
+      status: "True"
+    wait_timeout: "{{ cluster_app_wait_timeout }}"
+
+- name: Deploy the services and publish the UI
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: workloads.yaml.j2
+    wait: true
+    wait_timeout: "{{ cluster_app_wait_timeout }}"
+
+- name: Deploy Homepage
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: homepage.yaml.j2
+    wait: true
+    wait_timeout: "{{ cluster_app_wait_timeout }}"
+
+- name: Say where everything answers
+  ansible.builtin.debug:
+    msg:
+      - "Site: https://{{ cluster_app_endpoint.hostname }}"
+      - "Homepage (tailnet only): http://homepage.{{ cluster_app_internal_domain }}"
+      - "Headlamp (tailnet only): http://headlamp.{{ cluster_app_internal_domain }}"

@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# CloudNativePG reads the PostgreSQL major version from the image tag, and this
+# project tags images with a commit. The catalog states the major outright.
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: oilscope
+  namespace: {{ cluster_app_namespace }}
+spec:
+  images:
+    - major: {{ cluster_app_database_major }}
+      image: {{ cluster_app_repository }}/database:{{ cluster_app_image_tag }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ cluster_app_database_cluster }}
+  namespace: {{ cluster_app_namespace }}
+spec:
+  instances: {{ cluster_app_database_instances | int }}
+
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: oilscope
+    major: {{ cluster_app_database_major }}
+  imagePullSecrets:
+    - name: oilscope-registry
+
+  # The image is built on the Debian PostgreSQL image, whose postgres user is
+  # 999, not the 26 of the operator's own images.
+  postgresUID: 999
+  postgresGID: 999
+
+  storage:
+    size: {{ cluster_app_database_storage_gb | int }}Gi
+
+  # Spread the instances over the nodes, so losing one node loses one copy.
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+    podAntiAffinityType: preferred
+
+  postgresql:
+    shared_preload_libraries:
+      - pg_cron
+    parameters:
+      cron.database_name: {{ cluster_app_database_name }}
+      cron.use_background_workers: "on"
+
+  bootstrap:
+    initdb:
+      database: {{ cluster_app_database_name }}
+      owner: {{ cluster_app_database_user }}
+      secret:
+        name: {{ cluster_app_database_cluster }}-app-user
+      # Run once, as the superuser, in the application database. The
+      # migrations run as the application role, which may not create these
+      # extensions itself; they find them in place and move on.
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS pgcrypto
+        - CREATE EXTENSION IF NOT EXISTS hstore
+        - CREATE EXTENSION IF NOT EXISTS pg_cron
+        - CREATE EXTENSION IF NOT EXISTS pgmq
+        - SELECT pgmq.create('price_observations')
+        - GRANT USAGE ON SCHEMA cron TO {{ cluster_app_database_user }}
+        - GRANT USAGE ON SCHEMA pgmq TO {{ cluster_app_database_user }}
+        - GRANT ALL ON ALL TABLES IN SCHEMA pgmq TO {{ cluster_app_database_user }}
+        - GRANT ALL ON ALL SEQUENCES IN SCHEMA pgmq TO {{ cluster_app_database_user }}
+        - ALTER DEFAULT PRIVILEGES IN SCHEMA pgmq GRANT ALL ON TABLES TO {{ cluster_app_database_user }}
+        - ALTER DEFAULT PRIVILEGES IN SCHEMA pgmq GRANT ALL ON SEQUENCES TO {{ cluster_app_database_user }}
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+---
+# Every instance exports metrics on 9187. There is no Prometheus here yet, so
+# this Service is what a scraper - or Homepage's status light - points at.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ cluster_app_database_cluster }}-metrics
+  namespace: {{ cluster_app_namespace }}
+spec:
+  selector:
+    cnpg.io/cluster: {{ cluster_app_database_cluster }}
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: 9187

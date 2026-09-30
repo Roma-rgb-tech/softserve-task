@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+{#
+  One replica of each service for now: the fetcher schedules its own fetches
+  and would repeat them from every replica, and the services have not been
+  adapted to share work yet.
+#}
+{% set image = cluster_app_repository ~ '/%s:' ~ cluster_app_image_tag %}
+{% set services = [
+  {'name': 'history', 'port': 8001, 'url_key': 'HISTORY_DATABASE_URL',
+   'env': {'QUEUE_BACKEND': 'pgmq', 'PGMQ_QUEUE': 'price_observations',
+           'PGMQ_VISIBILITY_TIMEOUT_SECONDS': '60', 'PGMQ_POLL_INTERVAL_SECONDS': '1',
+           'PGMQ_MAX_ATTEMPTS': '5', 'LOG_LEVEL': 'INFO', 'TZ': 'UTC'},
+   'secret_env': {}},
+  {'name': 'fetcher', 'port': 8002, 'url_key': 'FETCHER_DATABASE_URL',
+   'env': {'QUEUE_BACKEND': 'pgmq', 'PGMQ_QUEUE': 'price_observations',
+           'DATA_PROVIDER': 'oilpriceapi', 'FETCH_CRON_HOURS': '0,6,12,18',
+           'FETCH_TIMEZONE': 'UTC', 'FETCH_ON_STARTUP': 'true',
+           'REQUEST_TIMEOUT_SECONDS': '15', 'LISTEN_ADDRESS': '0.0.0.0:8002', 'TZ': 'UTC'},
+   'secret_env': {'OILPRICEAPI_KEY': 'OILPRICEAPI_KEY'}},
+  {'name': 'ui', 'port': 8080, 'url_key': 'UI_DATABASE_URL',
+   'env': {'HISTORY_SERVICE_URL': 'http://history:8001', 'SESSION_BACKEND': 'redis',
+           'SESSION_TTL_SECONDS': '2592000', 'SESSION_COOKIE_SECURE': 'true',
+           'LOG_LEVEL': 'INFO', 'TZ': 'UTC'},
+   'secret_env': {'REDIS_URL': 'REDIS_URL'}},
+] %}
+{% for service in services %}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service.name }}
+  namespace: {{ cluster_app_namespace }}
+  labels:
+    app.kubernetes.io/name: {{ service.name }}
+    app.kubernetes.io/part-of: oilscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ service.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ service.name }}
+        app.kubernetes.io/part-of: oilscope
+    spec:
+      imagePullSecrets:
+        - name: oilscope-registry
+      containers:
+        - name: {{ service.name }}
+          image: {{ image | format(service.name) }}
+          ports:
+            - name: http
+              containerPort: {{ service.port }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: oilscope-app
+                  key: {{ service.url_key }}
+{% for name, key in service.secret_env.items() %}
+            - name: {{ name }}
+              valueFrom:
+                secretKeyRef:
+                  name: oilscope-app
+                  key: {{ key }}
+{% endfor %}
+{% for name, value in service.env.items() %}
+            - name: {{ name }}
+              value: {{ value | to_json }}
+{% endfor %}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service.name }}
+  namespace: {{ cluster_app_namespace }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ service.name }}
+  ports:
+    - name: http
+      port: {{ service.port }}
+      targetPort: http
+{% endfor %}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: {{ cluster_app_namespace }}
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+# cert-manager sees the annotation, proves the hostname over DNS-01 and keeps
+# the certificate in oilscope-tls; Traefik serves it on every node.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ui
+  namespace: {{ cluster_app_namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    traefik.ingress.kubernetes.io/router.middlewares: {{ cluster_app_namespace }}-redirect-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - {{ cluster_app_endpoint.hostname }}
+      secretName: oilscope-tls
+  rules:
+    - host: {{ cluster_app_endpoint.hostname }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui
+                port:
+                  name: http
