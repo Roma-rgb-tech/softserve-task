@@ -87,3 +87,33 @@ oilscope_database_sslmode: >-
   {{ 'disable'
      if (not oilscope_database_managed or oilscope_database_cloud == 'gcp')
      else 'require' }}
+
+# The k3s cluster. The controller keeps its own kubeconfig per stand, so Helm
+# and kubectl from this repository never touch the operator's other clusters.
+oilscope_kubeconfig: >-
+  {{ lookup('ansible.builtin.env', 'OILSCOPE_KUBECONFIG')
+     | default(lookup('ansible.builtin.env', 'HOME')
+               ~ '/.kube/' ~ (oilscope_name_prefix | trim) ~ '.yaml', true) }}
+
+oilscope_cluster: "{{ oilscope_project_config.cluster | default({}) }}"
+oilscope_namespace: "{{ oilscope_cluster.namespace | default('oilscope') }}"
+oilscope_internal_domain: "{{ oilscope_cluster.internal_domain | default('oilscope.internal') }}"
+
+# The node whose secret_mappings hold every value the cluster needs. Its cloud
+# identity reads them, and the controller turns them into Kubernetes Secrets.
+oilscope_secrets_host: "{{ groups['k3s_server'] | default([]) | first | default('') }}"
+
+# Every private range of the clouds in use. The operator-only pages answer only
+# to these: the tailnet subnet router masquerades the operator's device behind
+# the bastion's private address, while visitors from the internet keep theirs.
+oilscope_private_ranges: >-
+  {{ ([oilscope_project_config.network.vpc_cidr]
+      + (oilscope_project_config.network.clouds | default({})
+         | dict2items | map(attribute='value.vpc_cidr') | list))
+     | select | unique | list }}
+
+# The public hostname of the site, from whichever node carries public_endpoint.
+oilscope_public_endpoint: >-
+  {{ (oilscope_project_config.vms | dict2items
+      | selectattr('value.public_endpoint', 'defined')
+      | map(attribute='value.public_endpoint') | list | first) | default({}) }}

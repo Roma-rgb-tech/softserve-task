@@ -1,0 +1,316 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+{% set ns = cluster_app_homepage_namespace %}
+{% set host = 'homepage.' ~ cluster_app_internal_domain %}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ ns }}
+---
+{% set page %}
+# The whole page is this ConfigMap. Each service gets a link and a status light:
+# siteMonitor asks the service's own health endpoint from inside the cluster,
+# green when it answers, red when it does not.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+data:
+  settings.yaml: |
+    title: OilScope
+    theme: dark
+    color: slate
+    headerStyle: clean
+    layout:
+      OilScope:
+        style: row
+        columns: 3
+      Cluster:
+        style: row
+        columns: 3
+  services.yaml: |
+    - OilScope:
+        - Site:
+            href: https://{{ cluster_app_endpoint.hostname }}
+            description: The public page
+            siteMonitor: http://ui.{{ cluster_app_namespace }}.svc.cluster.local:8080/health
+        - History API:
+            description: Stores the observations the queue delivers
+            siteMonitor: http://history.{{ cluster_app_namespace }}.svc.cluster.local:8001/health
+        - Fetcher:
+            description: Fetches prices four times a day
+            siteMonitor: http://fetcher.{{ cluster_app_namespace }}.svc.cluster.local:8002/health
+    - Cluster:
+        - Headlamp:
+            href: http://headlamp.{{ cluster_app_internal_domain }}
+            description: Everything in the cluster, read-only
+            siteMonitor: http://headlamp.headlamp.svc.cluster.local
+        - PostgreSQL:
+            description: CloudNativePG, {{ cluster_app_database_instances }} instances
+            siteMonitor: http://{{ cluster_app_database_cluster }}-metrics.{{ cluster_app_namespace }}.svc.cluster.local:9187/metrics
+  widgets.yaml: |
+    - kubernetes:
+        cluster:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+          label: k3s
+        nodes:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+  kubernetes.yaml: |
+    mode: cluster
+  bookmarks.yaml: ""
+  docker.yaml: ""
+  custom.css: ""
+  custom.js: ""
+{% endset %}
+{{ page }}---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+---
+# Enough to draw the cluster and node widgets: node and pod metrics, nothing
+# that can change anything.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homepage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: {{ ns }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+  labels:
+    app.kubernetes.io/name: homepage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homepage
+      annotations:
+        # A changed page restarts the pod, which reads the files only at start.
+        checksum/config: "{{ page | hash('sha1') }}"
+    spec:
+      serviceAccountName: homepage
+      containers:
+        - name: homepage
+          image: {{ cluster_app_homepage_image }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # The pod address is what the kubelet's probe sends as Host.
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: "$(MY_POD_IP):3000,{{ host }}"
+          # One file per mount, so /app/config stays writable for the logs.
+          volumeMounts:
+{% for file in ['settings.yaml', 'services.yaml', 'widgets.yaml', 'kubernetes.yaml', 'bookmarks.yaml', 'docker.yaml', 'custom.css', 'custom.js'] %}
+            - name: config
+              mountPath: /app/config/{{ file }}
+              subPath: {{ file }}
+{% endfor %}
+            - name: logs
+              mountPath: /app/config/logs
+          readinessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: homepage
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+---
+# Enough to draw the cluster and node widgets: node and pod metrics, nothing
+# that can change anything.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homepage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage
+subjects:
+  - kind: ServiceAccount
+    name: homepage
+    namespace: {{ ns }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+  labels:
+    app.kubernetes.io/name: homepage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homepage
+      annotations:
+        # A changed page restarts the pod, which reads the files only at start.
+        checksum/config: "{{ page | hash('sha1') }}"
+    spec:
+      serviceAccountName: homepage
+      containers:
+        - name: homepage
+          image: {{ cluster_app_homepage_image }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: {{ host }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+            - name: logs
+              mountPath: /app/config/logs
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ host }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: homepage
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+spec:
+  selector:
+    app.kubernetes.io/name: homepage
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: internal-only
+  namespace: {{ ns }}
+spec:
+  ipAllowList:
+    sourceRange: {{ cluster_app_private_ranges | to_json }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homepage
+  namespace: {{ ns }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: {{ ns }}-internal-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homepage
+                port:
+                  name: http

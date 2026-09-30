@@ -2,10 +2,14 @@
 ---
 # Everything Ansible does after terraform apply, in the order it has to happen:
 # the containers Terraform created are filled, the bastion is moved onto its
-# final SSH port, and only then are the workloads deployed through it.
+# final SSH port and joins the tailnet, and only then is the k3s cluster built
+# through it and the application deployed into it.
 #
 # One variable drives all of it. project_config_path is the same file the
 # Terraform configuration reads, so nothing is described twice.
+#
+# The Docker Compose deployment this replaces is kept at the
+# snapshot/vm-compose tag.
 - name: Add the deployment secret versions
   hosts: localhost
   gather_facts: false
@@ -30,10 +34,5 @@
 - name: Configure the bastion
   ansible.builtin.import_playbook: bootstrap_bastion.yml
 
-- name: Deploy the workloads
-  ansible.builtin.import_playbook: deploy_workloads.yml
-
-# Last, because the agents tail the container logs and there is nothing to tail
-# until the workloads are running.
-- name: Install the monitoring agents
-  ansible.builtin.import_playbook: monitoring.yml
+- name: Build the cluster and deploy the application
+  ansible.builtin.import_playbook: cluster.yml
