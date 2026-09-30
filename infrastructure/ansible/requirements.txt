@@ -11,3 +11,6 @@ google-auth>=2.0.0
 requests>=2.25.0
 boto3>=1.34.0
 botocore>=1.34.0
+# kubernetes backs kubernetes.core.k8s; kubernetes.core.helm also needs the
+# helm binary on the PATH (brew install helm).
+kubernetes>=30.0.0

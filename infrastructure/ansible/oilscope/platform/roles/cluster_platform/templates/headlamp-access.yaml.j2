@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ cluster_platform_charts.headlamp.namespace }}
+---
+# Visitors from the internet keep their own address through ServiceLB and
+# Traefik; the operator arrives from the bastion's private address.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: internal-only
+  namespace: {{ cluster_platform_charts.headlamp.namespace }}
+spec:
+  ipAllowList:
+    sourceRange: {{ cluster_platform_private_ranges | to_json }}
+---
+# Read access to every resource, Secrets included, so the dashboard shows the
+# whole cluster. Changing anything still goes through kubectl and Ansible.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: headlamp-read-all
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["*"]
+    verbs: ["get"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp-operator
+  namespace: {{ cluster_platform_charts.headlamp.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-operator-read-all
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: headlamp-read-all
+subjects:
+  - kind: ServiceAccount
+    name: headlamp-operator
+    namespace: {{ cluster_platform_charts.headlamp.namespace }}
+---
+# A long-lived token for the sign-in page. Delete the Secret to revoke it; the
+# next run makes a new one.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: headlamp-operator-token
+  namespace: {{ cluster_platform_charts.headlamp.namespace }}
+  annotations:
+    kubernetes.io/service-account.name: headlamp-operator
+type: kubernetes.io/service-account-token

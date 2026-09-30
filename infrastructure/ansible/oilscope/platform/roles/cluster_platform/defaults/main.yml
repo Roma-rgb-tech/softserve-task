@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# Everything here runs on the controller. Helm and the Kubernetes modules reach
+# the cluster through this kubeconfig, which the k3s role wrote.
+cluster_platform_kubeconfig: "{{ oilscope_kubeconfig }}"
+
+# One entry per chart. The version is a Helm constraint, so patch releases come
+# in on their own while a new major waits for someone to read its changelog.
+cluster_platform_charts:
+  traefik:
+    repo: https://traefik.github.io/charts
+    chart: traefik
+    version: "^41.0.0"
+    namespace: traefik
+  cert_manager:
+    repo: https://charts.jetstack.io
+    chart: cert-manager
+    version: "^1.18.0"
+    namespace: cert-manager
+  cloudnative_pg:
+    repo: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    version: "^0.29.0"
+    namespace: cnpg-system
+  headlamp:
+    repo: https://kubernetes-sigs.github.io/headlamp/
+    chart: headlamp
+    version: "^0.45.0"
+    namespace: headlamp
+
+# Let's Encrypt. Point it at the staging directory while experimenting: the
+# production one allows five certificates for the same name a week.
+cluster_platform_acme_server: https://acme-v02.api.letsencrypt.org/directory
+cluster_platform_acme_email: ""
+cluster_platform_cloudflare_token: ""
+
+cluster_platform_internal_domain: "{{ oilscope_internal_domain }}"
+cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"

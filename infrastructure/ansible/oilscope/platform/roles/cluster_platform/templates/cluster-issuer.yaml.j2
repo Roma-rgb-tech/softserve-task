@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: {{ cluster_platform_acme_server }}
+    email: {{ cluster_platform_acme_email }}
+    privateKeySecretRef:
+      name: letsencrypt-account
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
