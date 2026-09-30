@@ -21,6 +21,11 @@ connection then hangs until it times out. The role installs
 forwarded through `tailscale0` to the path MTU, so both ends agree on segments
 that fit from the first packet.
 
+The auth key is ephemeral unless `tailscale.ephemeral` is `false` in the
+project configuration. An ephemeral device is removed from the tailnet soon
+after it goes offline, so destroying a stand does not leave dead bastions in
+the device list; a bastion that was removed simply joins again on the next run.
+
 `bootstrap_bastion.yml` runs the role only when the project configuration has a
 `tailscale` block.
 
