@@ -17,3 +17,8 @@ collections:
 
   - name: azure.azcollection
     version: ">=3.0.0"
+
+  # Helm releases and Kubernetes objects, applied from the controller against
+  # the k3s cluster.
+  - name: kubernetes.core
+    version: ">=5.0.0"

@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The shared layer every application on the cluster relies on: the ingress
+# controller, certificates, the PostgreSQL operator and a dashboard. Each is a
+# Helm release installed from the controller with a short values file of its
+# own; only what differs from the chart's defaults is written down.
+- name: Refuse to run without a Cloudflare token for the DNS-01 challenge
+  ansible.builtin.fail:
+    msg: >-
+      cluster_platform_cloudflare_token is empty. cert-manager proves the
+      public hostname through Cloudflare's API, so map CF_DNS_API_TOKEN in the
+      secret_mappings of the first k3s server.
+  when: cluster_platform_cloudflare_token | length == 0
+
+- name: Refuse to run without an ACME account email
+  ansible.builtin.fail:
+    msg: >-
+      cluster_platform_acme_email is empty. Set public_endpoint.acme_email on
+      the node that carries the public hostname.
+  when: cluster_platform_acme_email | length == 0
+
+- name: Install Traefik on every node
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: traefik
+    chart_repo_url: "{{ cluster_platform_charts.traefik.repo }}"
+    chart_ref: "{{ cluster_platform_charts.traefik.chart }}"
+    chart_version: "{{ cluster_platform_charts.traefik.version }}"
+    release_namespace: "{{ cluster_platform_charts.traefik.namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ role_path }}/files/values/traefik.yaml"
+    wait: true
+
+- name: Install cert-manager
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: cert-manager
+    chart_repo_url: "{{ cluster_platform_charts.cert_manager.repo }}"
+    chart_ref: "{{ cluster_platform_charts.cert_manager.chart }}"
+    chart_version: "{{ cluster_platform_charts.cert_manager.version }}"
+    release_namespace: "{{ cluster_platform_charts.cert_manager.namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ role_path }}/files/values/cert-manager.yaml"
+    wait: true
+
+- name: Give cert-manager the Cloudflare token
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cloudflare-api-token
+        namespace: "{{ cluster_platform_charts.cert_manager.namespace }}"
+      type: Opaque
+      stringData:
+        api-token: "{{ cluster_platform_cloudflare_token }}"
+  no_log: true
+
+- name: Issue certificates from Let's Encrypt over DNS-01
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: cluster-issuer.yaml.j2
+
+- name: Install the CloudNativePG operator
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: cnpg
+    chart_repo_url: "{{ cluster_platform_charts.cloudnative_pg.repo }}"
+    chart_ref: "{{ cluster_platform_charts.cloudnative_pg.chart }}"
+    chart_version: "{{ cluster_platform_charts.cloudnative_pg.version }}"
+    release_namespace: "{{ cluster_platform_charts.cloudnative_pg.namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ role_path }}/files/values/cloudnative-pg.yaml"
+    wait: true
+
+- name: Create the Headlamp namespace and its internal-only allow list
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: headlamp-access.yaml.j2
+
+- name: Install Headlamp, reachable only over the tailnet
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: headlamp
+    chart_repo_url: "{{ cluster_platform_charts.headlamp.repo }}"
+    chart_ref: "{{ cluster_platform_charts.headlamp.chart }}"
+    chart_version: "{{ cluster_platform_charts.headlamp.version }}"
+    release_namespace: "{{ cluster_platform_charts.headlamp.namespace }}"
+    values_files:
+      - "{{ role_path }}/files/values/headlamp.yaml"
+    values:
+      ingress:
+        hosts:
+          - host: "headlamp.{{ cluster_platform_internal_domain }}"
+            paths:
+              - path: /
+                type: Prefix
+    wait: true
+
+- name: Tell the operator how to sign in to Headlamp
+  ansible.builtin.debug:
+    msg: >-
+      Headlamp: http://headlamp.{{ cluster_platform_internal_domain }} - point
+      that name at any node's private address in /etc/hosts and join the
+      tailnet with --accept-routes. Sign in with the token from
+      kubectl --kubeconfig {{ cluster_platform_kubeconfig }} -n
+      {{ cluster_platform_charts.headlamp.namespace }} get secret
+      headlamp-operator-token -o jsonpath='{.data.token}' | base64 -d

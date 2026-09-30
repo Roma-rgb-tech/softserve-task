@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# One Traefik on every node, so the site answers on whichever node a visitor
+# lands on - the DNS record points at one of them, but none is special.
+deployment:
+  kind: DaemonSet
+
+# k3s answers for LoadBalancer services with ServiceLB, which binds ports 80
+# and 443 on every node. Local keeps each request on the node it arrived at,
+# which also keeps the visitor's address for the internal-only allow list.
+service:
+  spec:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+
+providers:
+  kubernetesCRD:
+    enabled: true
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
