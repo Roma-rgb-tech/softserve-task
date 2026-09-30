@@ -1,7 +1,7 @@
 locals {
   database_clients = {
     for name, vm in local.selected : name => vm
-    if local.managed && contains(["history", "fetcher", "ui", "database"], vm.role)
+    if local.managed && contains(["k3s_server", "k3s_agent"], vm.role)
   }
 }
 

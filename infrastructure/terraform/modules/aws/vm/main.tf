@@ -70,8 +70,8 @@ resource "aws_instance" "workload" {
     ignore_changes = [associate_public_ip_address]
 
     precondition {
-      condition     = !each.value.assign_public_ip || contains(["ui", "bastion"], each.value.role)
-      error_message = "Only workloads with role ui or bastion may receive a public IP."
+      condition     = !each.value.assign_public_ip || contains(["bastion", "k3s_server", "k3s_agent"], each.value.role)
+      error_message = "Only the bastion and the k3s nodes may receive a public IP."
     }
 
     precondition {

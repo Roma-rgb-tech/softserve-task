@@ -12,7 +12,7 @@ locals {
   instance_class = lookup(lookup(var.config.catalog, "db_size", {}), local.cloud, {})[lookup(local.settings, "size", "micro")]
   port           = var.config.service_ports.postgresql
 
-  clients = ["fetcher", "history", "ui", "infra"]
+  clients = ["k3s"]
 
   tags = merge({
     application = var.config.name_prefix

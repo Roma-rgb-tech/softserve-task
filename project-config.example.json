@@ -127,16 +127,30 @@
     "image_sha": "0123456789abcdef0123456789abcdef01234567"
   },
   "network": {
-    "vpc_cidr": "10.0.0.0/16",
-    "management_subnet_cidr": "10.0.0.0/28",
-    "workload_subnet_cidr": "10.0.1.0/26",
+    "vpc_cidr": "10.10.0.0/16",
+    "management_subnet_cidr": "10.10.0.0/28",
+    "workload_subnet_cidr": "10.10.1.0/26",
     "ui_public_ports": [
+      80,
       443
     ],
-    "database_subnet_cidrs": [
-      "10.10.2.0/24",
-      "10.10.3.0/24"
-    ]
+    "clouds": {
+      "gcp": {
+        "vpc_cidr": "10.10.0.0/16",
+        "management_subnet_cidr": "10.10.0.0/28",
+        "workload_subnet_cidr": "10.10.1.0/26"
+      },
+      "aws": {
+        "vpc_cidr": "10.20.0.0/16",
+        "management_subnet_cidr": "10.20.0.0/28",
+        "workload_subnet_cidr": "10.20.1.0/26"
+      },
+      "azure": {
+        "vpc_cidr": "10.30.0.0/16",
+        "management_subnet_cidr": "10.30.0.0/28",
+        "workload_subnet_cidr": "10.30.1.0/26"
+      }
+    }
   },
   "service_ports": {
     "history_api": 8001,
@@ -163,8 +177,7 @@
     }
   },
   "generated_secrets": [
-    "example-db-password",
-    "oilscope-dev-queue-password",
+    "oilscope-dev-db-password",
     "oilscope-dev-redis-password"
   ],
   "vms": {
@@ -172,7 +185,7 @@
       "role": "bastion",
       "size": "micro",
       "os": "ubuntu-26.04",
-      "internal_ip": "10.0.0.4",
+      "internal_ip": "10.10.0.4",
       "boot_disk": {
         "size_gb": 10,
         "type": "balanced"
@@ -188,116 +201,87 @@
       ],
       "ssh_bootstrap": false
     },
-    "infra": {
-      "role": "database",
-      "size": "micro",
-      "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.4",
+    "k3s-1": {
+      "role": "k3s_server",
+      "size": "medium",
+      "os": "ubuntu-24.04",
+      "internal_ip": "10.10.0.5",
       "boot_disk": {
-        "size_gb": 10,
-        "type": "balanced"
-      },
-      "assign_public_ip": false,
-      "network_tags": [
-        "infra"
-      ],
-      "secret_mappings": {
-        "POSTGRES_PASSWORD": "example-db-password",
-        "GHCR_TOKEN": "example-ghcr-token",
-        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password",
-        "REDIS_PASSWORD": "oilscope-dev-redis-password"
-      }
-    },
-    "history": {
-      "role": "history",
-      "size": "small",
-      "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.5",
-      "boot_disk": {
-        "size_gb": 10,
-        "type": "balanced"
-      },
-      "assign_public_ip": false,
-      "network_tags": [
-        "history"
-      ],
-      "secret_mappings": {
-        "POSTGRES_PASSWORD": "example-db-password",
-        "GHCR_TOKEN": "example-ghcr-token",
-        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password"
-      },
-      "extra_disks": [
-        {
-          "name": "data",
-          "size_gb": 20,
-          "type": "balanced",
-          "mount_path": "/var/lib/oilscope"
-        }
-      ]
-    },
-    "fetcher": {
-      "role": "fetcher",
-      "size": "micro",
-      "os": "ubuntu-26.04",
-      "internal_ip": "10.0.1.6",
-      "boot_disk": {
-        "size_gb": 10,
-        "type": "balanced"
-      },
-      "assign_public_ip": false,
-      "network_tags": [
-        "fetcher"
-      ],
-      "secret_mappings": {
-        "POSTGRES_PASSWORD": "example-db-password",
-        "OILPRICEAPI_KEY": "example-api-key",
-        "GHCR_TOKEN": "example-ghcr-token",
-        "RABBITMQ_PASSWORD": "oilscope-dev-queue-password"
-      }
-    },
-    "ui": {
-      "role": "ui",
-      "size": "micro",
-      "os": "ubuntu-26.04",
-      "internal_ip": "10.0.0.5",
-      "boot_disk": {
-        "size_gb": 10,
+        "size_gb": 30,
         "type": "balanced"
       },
       "assign_public_ip": true,
       "network_tags": [
-        "ui"
+        "k3s"
       ],
       "secret_mappings": {
-        "POSTGRES_PASSWORD": "example-db-password",
+        "POSTGRES_PASSWORD": "oilscope-dev-db-password",
+        "REDIS_PASSWORD": "oilscope-dev-redis-password",
         "GHCR_TOKEN": "example-ghcr-token",
-        "CF_DNS_API_TOKEN": "example-cloudflare-dns-token",
-        "REDIS_PASSWORD": "oilscope-dev-redis-password"
+        "OILPRICEAPI_KEY": "example-api-key",
+        "CF_DNS_API_TOKEN": "example-cloudflare-dns-token"
       },
       "public_endpoint": {
         "hostname": "oilscope.example.com",
         "acme_email": "example-operator@example.com",
         "cloudflare_zone_id": "0123456789abcdef0123456789abcdef"
       }
+    },
+    "k3s-2": {
+      "role": "k3s_server",
+      "size": "medium",
+      "os": "ubuntu-24.04",
+      "internal_ip": "10.10.1.5",
+      "boot_disk": {
+        "size_gb": 30,
+        "type": "balanced"
+      },
+      "assign_public_ip": false,
+      "network_tags": [
+        "k3s"
+      ],
+      "secret_mappings": {}
+    },
+    "k3s-3": {
+      "role": "k3s_server",
+      "size": "medium",
+      "os": "ubuntu-24.04",
+      "internal_ip": "10.10.1.6",
+      "boot_disk": {
+        "size_gb": 30,
+        "type": "balanced"
+      },
+      "assign_public_ip": false,
+      "network_tags": [
+        "k3s"
+      ],
+      "secret_mappings": {}
     }
   },
   "database": {
-    "managed": true,
-    "engine_version": "16",
-    "size": "micro",
-    "storage_gb": 20,
+    "managed": false,
     "database_name": "oil_tracker",
     "username": "oil_tracker",
-    "password_secret": "oilscope-dev-db-password",
-    "backup_retention_days": 7,
-    "deletion_protection": false,
-    "queue_username": "oil_tracker",
-    "queue_vhost": "oil_tracker",
-    "queue_password_secret": "oilscope-dev-queue-password",
-    "edition": "ENTERPRISE"
+    "password_secret": "oilscope-dev-db-password"
   },
   "sessions": {
     "backend": "redis",
     "password_secret": "oilscope-dev-redis-password"
+  },
+  "tailscale": {
+    "tailnet": "-",
+    "ephemeral": true
+  },
+  "k3s": {
+    "version": "v1.33.4+k3s1",
+    "tls_sans": []
+  },
+  "cluster": {
+    "namespace": "oilscope",
+    "internal_domain": "oilscope.internal",
+    "database": {
+      "instances": 2,
+      "storage_gb": 5
+    }
   }
 }
