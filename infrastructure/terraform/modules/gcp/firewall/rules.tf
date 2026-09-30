@@ -1,5 +1,5 @@
 locals {
-  roles = ["bastion", "infra", "history", "fetcher", "ui"]
+  roles = ["bastion", "k3s"]
 
   bastion_vms  = [for name, vm in local.selected : vm if vm.role == "bastion"]
   has_bastion  = length(local.bastion_vms) > 0
@@ -9,6 +9,11 @@ locals {
   bootstrap = anytrue([
     for vm in local.bastion_vms : lookup(vm, "ssh_bootstrap", false)
   ]) && local.bastion_port != 22
+
+  # Everything a node speaks, for the rules between the nodes themselves and for
+  # what the subnet router forwards to them: the API (6443), etcd (2379-2380),
+  # the kubelet (10250), flannel VXLAN (8472/udp) and ICMP for path MTU.
+  all_traffic = [{ protocol = "tcp", ports = null }, { protocol = "udp", ports = null }, { protocol = "icmp", ports = null }]
 
   rules = {
     "bastion-ssh" = {
@@ -27,52 +32,30 @@ locals {
       allow         = [{ protocol = "tcp", ports = ["22"] }]
     }
 
-    "workload-ssh" = {
+    "k3s-ssh" = {
       enabled       = local.enabled
       source_ranges = null
       source_tags   = [local.tags.bastion]
-      target_tags   = [local.tags.infra, local.tags.history, local.tags.fetcher, local.tags.ui]
+      target_tags   = [local.tags.k3s]
       allow         = [{ protocol = "tcp", ports = ["22"] }]
     }
 
-    "ui-web" = {
+    # Traefik runs on every node, so any node with a public address serves the
+    # site. The API server, the kubelet and etcd stay private.
+    "k3s-web" = {
       enabled       = local.enabled
       source_ranges = ["0.0.0.0/0"]
       source_tags   = null
-      target_tags   = [local.tags.ui]
+      target_tags   = [local.tags.k3s]
       allow         = [{ protocol = "tcp", ports = [for p in var.config.network.ui_public_ports : tostring(p)] }]
     }
 
-    "history-api" = {
+    "k3s-cluster" = {
       enabled       = local.enabled
       source_ranges = null
-      source_tags   = [local.tags.ui]
-      target_tags   = [local.tags.history]
-      allow         = [{ protocol = "tcp", ports = [tostring(var.config.service_ports.history_api)] }]
-    }
-
-    "postgresql" = {
-      enabled       = local.enabled && !local.managed
-      source_ranges = null
-      source_tags   = [local.tags.fetcher, local.tags.history, local.tags.ui]
-      target_tags   = [local.tags.infra]
-      allow         = [{ protocol = "tcp", ports = [tostring(var.config.service_ports.postgresql)] }]
-    }
-
-    "amqp" = {
-      enabled       = local.enabled && local.managed
-      source_ranges = null
-      source_tags   = [local.tags.fetcher, local.tags.history]
-      target_tags   = [local.tags.infra]
-      allow         = [{ protocol = "tcp", ports = [tostring(lookup(var.config.service_ports, "amqp", 5672))] }]
-    }
-
-    "redis" = {
-      enabled       = local.enabled && local.cached
-      source_ranges = null
-      source_tags   = [local.tags.ui]
-      target_tags   = [local.tags.infra]
-      allow         = [{ protocol = "tcp", ports = [tostring(lookup(var.config.service_ports, "redis", 6379))] }]
+      source_tags   = [local.tags.k3s]
+      target_tags   = [local.tags.k3s]
+      allow         = local.all_traffic
     }
   }
 
@@ -90,27 +73,18 @@ locals {
       source_ranges = [var.config.network.management_subnet_cidr, var.config.network.workload_subnet_cidr]
       source_tags   = null
       target_tags   = [local.tags.bastion]
-      allow         = [{ protocol = "tcp", ports = null }, { protocol = "udp", ports = null }, { protocol = "icmp", ports = null }]
+      allow         = local.all_traffic
     }
 
-    "tailnet-infra" = {
+    # The subnet router masquerades what it forwards, so nodes in the other
+    # clouds and the operator's own tailnet device (kubectl, Helm, Headlamp)
+    # all arrive from the bastion's address.
+    "tailnet-k3s" = {
       enabled       = local.has_bastion && local.tailnet
       source_ranges = null
       source_tags   = [local.tags.bastion]
-      target_tags   = [local.tags.infra]
-      allow = [{ protocol = "tcp", ports = [
-        tostring(var.config.service_ports.postgresql),
-        tostring(lookup(var.config.service_ports, "amqp", 5672)),
-        tostring(lookup(var.config.service_ports, "redis", 6379)),
-      ] }]
-    }
-
-    "tailnet-history" = {
-      enabled       = local.has_bastion && local.tailnet
-      source_ranges = null
-      source_tags   = [local.tags.bastion]
-      target_tags   = [local.tags.history]
-      allow         = [{ protocol = "tcp", ports = [tostring(var.config.service_ports.history_api)] }]
+      target_tags   = [local.tags.k3s]
+      allow         = local.all_traffic
     }
   }
 

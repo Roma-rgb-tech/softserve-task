@@ -1,13 +1,9 @@
 locals {
   groups = {
     bastion = "Bastion host"
-    infra   = "Database workload"
-    history = "History workload"
-    fetcher = "Fetcher workload"
-    ui      = "UI workload"
+    k3s     = "k3s cluster node"
   }
 
-  workloads = ["infra", "history", "fetcher", "ui"]
   group_ids = { for name, group in azurerm_application_security_group.this : name => group.id }
 
   bastion_vms  = [for name, vm in local.selected : vm if vm.role == "bastion"]
@@ -18,10 +14,6 @@ locals {
   bootstrap = anytrue([
     for vm in local.bastion_vms : lookup(vm, "ssh_bootstrap", false)
   ]) && local.bastion_port != 22
-
-  ports      = var.config.service_ports
-  amqp_port  = lookup(var.config.service_ports, "amqp", 5672)
-  redis_port = lookup(var.config.service_ports, "redis", 6379)
 
   ingress_rules = merge(
     {
@@ -39,61 +31,17 @@ locals {
       }
     },
     {
-      for role in local.enabled ? local.workloads : [] :
-      "workload-ssh/${role}" => {
-        group = role, cidr = null, source_group = "bastion"
+      for name in local.enabled ? ["k3s-ssh"] : [] :
+      name => {
+        group = "k3s", cidr = null, source_group = "bastion"
         port  = 22
       }
     },
     {
       for port in local.enabled ? var.config.network.ui_public_ports : [] :
-      "ui-web/${port}" => {
-        group = "ui", cidr = "Internet", source_group = null
+      "k3s-web/${port}" => {
+        group = "k3s", cidr = "Internet", source_group = null
         port  = tonumber(port)
-      }
-    },
-    {
-      for role in local.enabled && !local.managed ? ["fetcher", "history", "ui"] : [] :
-      "postgresql/${role}" => {
-        group = "infra", cidr = null, source_group = role
-        port  = local.ports.postgresql
-      }
-    },
-    {
-      for role in local.enabled && local.managed ? ["fetcher", "history"] : [] :
-      "amqp/${role}" => {
-        group = "infra", cidr = null, source_group = role
-        port  = local.amqp_port
-      }
-    },
-    {
-      for role in local.enabled && local.cached ? ["ui"] : [] :
-      "redis/${role}" => {
-        group = "infra", cidr = null, source_group = role
-        port  = local.redis_port
-      }
-    },
-    {
-      for port in local.has_bastion && local.tailnet ? [
-        local.ports.postgresql, local.amqp_port, local.redis_port
-      ] : [] :
-      "tailnet-infra/${port}" => {
-        group = "infra", cidr = null, source_group = "bastion"
-        port  = port
-      }
-    },
-    {
-      for name in local.has_bastion && local.tailnet ? ["tailnet-history"] : [] :
-      name => {
-        group = "history", cidr = null, source_group = "bastion"
-        port  = local.ports.history_api
-      }
-    },
-    {
-      for name in local.enabled ? ["history-api"] : [] :
-      name => {
-        group = "history", cidr = null, source_group = "ui"
-        port  = local.ports.history_api
       }
     },
   )
@@ -105,5 +53,41 @@ locals {
       priority = 100 + index * 10
       name     = replace(replace(replace(name, "/", "-"), ".", "-"), ":", "-")
     })
+  }
+
+  # Every protocol: between the nodes (API, etcd, kubelet, flannel VXLAN), and
+  # from the subnet router, which masquerades the nodes of the other clouds and
+  # the operator's tailnet device behind its own address. Both sit below the
+  # deny-virtual-network rule at 4000.
+  open_rules = merge(
+    {
+      for name in local.enabled ? ["k3s-cluster"] : [] :
+      name => { group = "k3s", source_group = "k3s", priority = 3800 }
+    },
+    {
+      for name in local.enabled && local.has_bastion && local.tailnet ? ["tailnet-k3s"] : [] :
+      name => { group = "k3s", source_group = "bastion", priority = 3810 }
+    },
+  )
+}
+
+resource "azurerm_network_security_rule" "open" {
+  for_each = local.open_rules
+
+  name                        = each.key
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.vms[0].name
+  priority                    = each.value.priority
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+
+  source_application_security_group_ids      = [local.group_ids[each.value.source_group]]
+  destination_application_security_group_ids = [local.group_ids[each.value.group]]
+
+  lifecycle {
+    replace_triggered_by = [azurerm_application_security_group.this]
   }
 }

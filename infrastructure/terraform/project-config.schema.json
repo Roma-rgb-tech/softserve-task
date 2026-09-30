@@ -355,7 +355,7 @@
           ]
         }
       },
-      "description": "One bastion per cloud in use, keyed bastion or bastion-<cloud>, and the workloads."
+      "description": "One bastion per cloud in use, keyed bastion or bastion-<cloud>, and the k3s nodes."
     },
     "default_region": {
       "description": "Portable region token. Terraform resolves it to a provider region and zone.",
@@ -469,7 +469,7 @@
       ]
     },
     "database": {
-      "description": "Where the application's PostgreSQL lives, and with it where the queue lives. Absent, or managed set to false, keeps both in the container on the VM with role database. Managed hands PostgreSQL to the cloud - Cloud SQL or RDS - which has no PGMQ extension, so that VM runs a message broker instead and the services publish over AMQP.",
+      "description": "Where the application's PostgreSQL lives. managed false runs it inside the cluster as a CloudNativePG cluster (see cluster.database), with PGMQ and pg_cron loaded. managed true hands it to the cloud provider instead.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -650,6 +650,73 @@
           "description": "Keeps the subnet routers from dropping off the tailnet when their node key expires.",
           "type": "boolean",
           "default": true
+        },
+        "ephemeral": {
+          "description": "Registers every device as ephemeral, so it leaves the tailnet on its own soon after its VM is destroyed.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "k3s": {
+      "description": "How the k3s cluster on the k3s_server and k3s_agent nodes is installed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "description": "k3s release, as tagged on GitHub.",
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+\\+k3s[0-9]+$"
+        },
+        "api_endpoint": {
+          "description": "Address the controller's kubeconfig points at. Defaults to the private address of the first server, reached over the tailnet.",
+          "type": "string",
+          "minLength": 1
+        },
+        "tls_sans": {
+          "description": "Extra names or addresses the API server certificate must cover, such as a MagicDNS name. The private and public addresses of every server are always included.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "cluster": {
+      "description": "What runs inside the cluster, beyond the application images in registry.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "description": "Namespace the application, its database and its cache live in.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "default": "oilscope"
+        },
+        "internal_domain": {
+          "description": "Domain of the operator-only pages (Headlamp, Homepage). They answer on plain HTTP only to addresses inside the clouds' networks, so reach them over the tailnet with a hosts entry pointing at any node.",
+          "type": "string",
+          "default": "oilscope.internal"
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "instances": {
+              "description": "PostgreSQL instances: one primary, the rest streaming replicas.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 2
+            },
+            "storage_gb": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            }
+          }
         }
       }
     }
@@ -703,10 +770,7 @@
         "type": "string",
         "enum": [
           "bastion",
-          "infra",
-          "history",
-          "fetcher",
-          "ui"
+          "k3s"
         ]
       }
     },
@@ -739,11 +803,10 @@
           "type": "string",
           "enum": [
             "bastion",
-            "database",
-            "history",
-            "fetcher",
-            "ui"
-          ]
+            "k3s_server",
+            "k3s_agent"
+          ],
+          "description": "bastion is the jump host and tailnet subnet router of its cloud. k3s_server runs the control plane (API server, etcd) and workloads; k3s_agent runs workloads only. Keep one or three servers - two cannot form an etcd quorum."
         },
         "internal_ip": {
           "type": "string",
@@ -795,11 +858,12 @@
               "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
             },
             "cloudflare_zone_id": {
-              "description": "Zone ID the hostname's DNS lives in. Leave unset to manage the record yourself; set it and Terraform creates a DNS-only (unproxied) A record pointing at this workload's public IP, which the ACME TLS-ALPN-01 challenge needs to reach the VM directly.",
+              "description": "Zone ID the hostname's DNS lives in. Set it and Terraform creates a DNS-only (unproxied) A record pointing at this node's public IP, and cert-manager uses the same zone for the DNS-01 challenge.",
               "type": "string",
               "pattern": "^[0-9a-f]{32}$"
             }
-          }
+          },
+          "description": "The public hostname of the application. Put it on one k3s node with a public IP: Terraform points the DNS record at that node, cert-manager proves the name over DNS-01 and Traefik, which runs on every node, serves it."
         },
         "size": {
           "$ref": "#/$defs/size"
@@ -867,7 +931,8 @@
               "role": {
                 "enum": [
                   "bastion",
-                  "ui"
+                  "k3s_server",
+                  "k3s_agent"
                 ]
               }
             }
@@ -924,33 +989,10 @@
           "if": {
             "properties": {
               "role": {
-                "const": "history"
-              }
-            },
-            "required": [
-              "role"
-            ]
-          },
-          "then": {}
-        },
-        {
-          "if": {
-            "properties": {
-              "role": {
-                "const": "fetcher"
-              }
-            },
-            "required": [
-              "role"
-            ]
-          },
-          "then": {}
-        },
-        {
-          "if": {
-            "properties": {
-              "role": {
-                "const": "ui"
+                "enum": [
+                  "k3s_server",
+                  "k3s_agent"
+                ]
               }
             },
             "required": [
@@ -958,13 +1000,10 @@
             ]
           },
           "then": {
-            "required": [
-              "public_endpoint"
-            ],
             "properties": {
               "network_tags": {
                 "contains": {
-                  "const": "ui"
+                  "const": "k3s"
                 }
               }
             }
