@@ -51,7 +51,9 @@ metadata:
   namespace: lab
 spec:
   rules:
-    - http:
+    # A host of its own, so the example never answers for the public site.
+    - host: whoami.oilscope.internal
+      http:
         paths:
           - path: /
             pathType: Prefix
