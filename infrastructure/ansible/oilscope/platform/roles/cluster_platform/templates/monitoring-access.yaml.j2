@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ cluster_platform_charts.monitoring.namespace }}
+---
+# Grafana and Prometheus answer only over the tailnet, like Headlamp.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: internal-only
+  namespace: {{ cluster_platform_charts.monitoring.namespace }}
+spec:
+  ipAllowList:
+    sourceRange: {{ cluster_platform_private_ranges | to_json }}
+---
+# The Grafana administrator, with the password from the cloud secret store, so
+# it survives a reinstall of the release and is never written anywhere else.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-admin
+  namespace: {{ cluster_platform_charts.monitoring.namespace }}
+type: Opaque
+stringData:
+  admin-user: admin
+  admin-password: {{ cluster_platform_grafana_password | to_json }}

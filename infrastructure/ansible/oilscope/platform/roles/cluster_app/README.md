@@ -15,3 +15,6 @@ OilScope inside the cluster, applied from the controller:
    cert-manager.
 6. Homepage, configured by a ConfigMap, with a link and a status light for
    every service. Reachable only from the private ranges.
+7. ServiceMonitors for the services, a PodMonitor for the PostgreSQL
+   instances, and the OilScope dashboard (`files/oilscope-dashboard.json`)
+   as a ConfigMap Grafana's sidecar loads.

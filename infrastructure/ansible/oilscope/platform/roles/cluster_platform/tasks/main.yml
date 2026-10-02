@@ -19,6 +19,14 @@
       the node that carries the public hostname.
   when: cluster_platform_acme_email | length == 0
 
+- name: Refuse to run without a Grafana administrator password
+  ansible.builtin.fail:
+    msg: >-
+      cluster_platform_grafana_password is empty. Map GRAFANA_ADMIN_PASSWORD
+      in the secret_mappings of the first k3s server and list its container
+      in generated_secrets, so the deployment invents the value once.
+  when: cluster_platform_grafana_password | length == 0
+
 - name: Install Traefik on every node
   kubernetes.core.helm:
     kubeconfig: "{{ cluster_platform_kubeconfig }}"
@@ -79,6 +87,43 @@
       - "{{ role_path }}/files/values/cloudnative-pg.yaml"
     wait: true
 
+- name: Create the monitoring namespace, its allow list and the Grafana login
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: monitoring-access.yaml.j2
+  no_log: true
+
+# Prometheus finds what to scrape through ServiceMonitor and PodMonitor
+# resources, which every other release and the application role add for
+# themselves; this one only brings the machinery and Grafana.
+- name: Install Prometheus and Grafana
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: kube-prometheus-stack
+    chart_repo_url: "{{ cluster_platform_charts.monitoring.repo }}"
+    chart_ref: "{{ cluster_platform_charts.monitoring.chart }}"
+    chart_version: "{{ cluster_platform_charts.monitoring.version }}"
+    release_namespace: "{{ cluster_platform_charts.monitoring.namespace }}"
+    values_files:
+      - "{{ role_path }}/files/values/kube-prometheus-stack.yaml"
+    values:
+      prometheus:
+        ingress:
+          hosts:
+            - "prometheus.{{ cluster_platform_internal_domain }}"
+      grafana:
+        ingress:
+          hosts:
+            - "grafana.{{ cluster_platform_internal_domain }}"
+    wait: true
+
+- name: Scrape Traefik
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: platform-monitors.yaml.j2
+
 - name: Create the Headlamp namespace and its internal-only allow list
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_platform_kubeconfig }}"
@@ -104,12 +149,13 @@
                 type: Prefix
     wait: true
 
-- name: Tell the operator how to sign in to Headlamp
+- name: Tell the operator how to sign in
   ansible.builtin.debug:
-    msg: >-
-      Headlamp: http://headlamp.{{ cluster_platform_internal_domain }} - point
-      that name at any node's private address in /etc/hosts and join the
-      tailnet with --accept-routes. Sign in with the token from
-      kubectl --kubeconfig {{ cluster_platform_kubeconfig }} -n
-      {{ cluster_platform_charts.headlamp.namespace }} get secret
-      headlamp-operator-token -o jsonpath='{.data.token}' | base64 -d
+    msg:
+      - "Headlamp: http://headlamp.{{ cluster_platform_internal_domain }} - token:
+        kubectl --kubeconfig {{ cluster_platform_kubeconfig }}
+        -n {{ cluster_platform_charts.headlamp.namespace }} get secret headlamp-operator-token
+        -o jsonpath='{.data.token}' | base64 -d"
+      - "Grafana: http://grafana.{{ cluster_platform_internal_domain }} - admin, password in
+        the GRAFANA_ADMIN_PASSWORD container of the cloud secret store"
+      - "Prometheus: http://prometheus.{{ cluster_platform_internal_domain }}"
