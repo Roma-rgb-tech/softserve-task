@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# Every tailnet device that accepts DNS from Tailscale - the default - then
+# resolves the operator pages through the bastions, with nothing in /etc/hosts.
+- name: Read the tailnet's split DNS
+  ansible.builtin.uri:
+    url: "{{ internal_dns_tailnet_api }}/tailnet/{{ internal_dns_tailnet }}/dns/split-dns"
+    headers:
+      Authorization: "Bearer {{ lookup('ansible.builtin.env', internal_dns_tailnet_api_key_variable) }}"
+    return_content: true
+  register: internal_dns_split
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Send the internal domain to the bastions
+  ansible.builtin.uri:
+    url: "{{ internal_dns_tailnet_api }}/tailnet/{{ internal_dns_tailnet }}/dns/split-dns"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ lookup('ansible.builtin.env', internal_dns_tailnet_api_key_variable) }}"
+    body_format: json
+    body: "{{ {internal_dns_domain: internal_dns_nameservers} }}"
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  when: >-
+    (internal_dns_split.json | default({}))[internal_dns_domain] | default([]) | sort
+    != internal_dns_nameservers | sort

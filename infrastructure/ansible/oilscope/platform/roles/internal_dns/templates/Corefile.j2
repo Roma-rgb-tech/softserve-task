@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+{{ internal_dns_domain }}:53 {
+    bind {{ internal_dns_listen }}
+    hosts {
+{% for name in internal_dns_names %}
+{% for address in internal_dns_addresses %}
+        {{ address }} {{ name }}.{{ internal_dns_domain }}
+{% endfor %}
+{% endfor %}
+        ttl {{ internal_dns_ttl }}
+    }
+    errors
+}

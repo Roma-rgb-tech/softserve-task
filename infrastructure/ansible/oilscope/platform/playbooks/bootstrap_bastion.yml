@@ -62,3 +62,18 @@
   roles:
     - role: oilscope.platform.tailnet
       when: oilscope_tailnet | bool
+
+# Names for the operator pages, served where the tailnet already arrives. Only
+# with a tailnet, which is how those pages are reached, and only once there are
+# nodes to point the names at.
+- name: Answer for the operator pages' names
+  hosts: bastion
+  gather_facts: false
+  vars:
+    oilscope_tailnet: >-
+      {{ (lookup('ansible.builtin.file', project_config_path) | from_json).tailscale is defined }}
+  roles:
+    - role: oilscope.platform.internal_dns
+      when:
+        - oilscope_tailnet | bool
+        - groups['k3s_server'] | default([]) | length > 0

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+internal_dns_version: v1.14.6
+internal_dns_release_url: https://github.com/coredns/coredns/releases/download
+
+internal_dns_domain: "{{ oilscope_internal_domain }}"
+
+# The operator pages. Each name answers with every node's private address:
+# Traefik runs on all of them, so any one will do and the client picks.
+internal_dns_names:
+  - headlamp
+  - homepage
+  - grafana
+  - prometheus
+internal_dns_addresses: >-
+  {{ (groups['k3s_server'] | default([]) + groups['k3s_agent'] | default([]))
+     | map('extract', hostvars, 'internal_ip') | select | list }}
+
+# CoreDNS listens on the bastion's private address only. A tailnet client
+# reaches it through the subnet route this very bastion advertises.
+internal_dns_listen: "{{ internal_ip }}"
+internal_dns_ttl: 60
+
+internal_dns_install_dir: "/opt/coredns/{{ internal_dns_version }}"
+internal_dns_config_dir: /etc/coredns
+
+# Split DNS in the tailnet: queries for the domain go to every bastion.
+internal_dns_tailnet: "{{ (oilscope_project_config.tailscale | default({})).tailnet | default('-') }}"
+internal_dns_nameservers: >-
+  {{ groups['bastion'] | map('extract', hostvars, 'internal_ip') | select | list }}
+internal_dns_tailnet_api: https://api.tailscale.com/api/v2
+internal_dns_tailnet_api_key_variable: TAILSCALE_API_KEY
