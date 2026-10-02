@@ -64,8 +64,10 @@
         name: cloudflare-api-token
         namespace: "{{ cluster_platform_charts.cert_manager.namespace }}"
       type: Opaque
-      stringData:
-        api-token: "{{ cluster_platform_cloudflare_token }}"
+      # Encoded under data, which is what the API server stores, so an
+      # unchanged token reports no change.
+      data:
+        api-token: "{{ cluster_platform_cloudflare_token | b64encode }}"
   no_log: true
 
 - name: Issue certificates from Let's Encrypt over DNS-01

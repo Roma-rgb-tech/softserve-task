@@ -23,6 +23,6 @@ metadata:
   name: grafana-admin
   namespace: {{ cluster_platform_charts.monitoring.namespace }}
 type: Opaque
-stringData:
-  admin-user: admin
-  admin-password: {{ cluster_platform_grafana_password | to_json }}
+data:
+  admin-user: {{ 'admin' | b64encode }}
+  admin-password: {{ cluster_platform_grafana_password | b64encode }}
