@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, Query, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import models  # noqa: F401
+from . import metrics, models  # noqa: F401
 from .config import get_settings
 from .database import Base, engine, get_db
 from .messaging import create_consumer
@@ -41,6 +41,8 @@ consumer = create_consumer(settings)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    metrics.serve(settings.metrics_port)
+
     Base.metadata.create_all(bind=engine)
 
     logger.info("database schema is ready")
@@ -59,6 +61,9 @@ app = FastAPI(
     description=("Owns persistence and serves timestamped market price snapshots."),
     lifespan=lifespan,
 )
+
+# Health probes would only drown out the requests that matter.
+metrics.instrument(app, excluded=("/health",))
 
 
 @app.get("/health", tags=["operations"])

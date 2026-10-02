@@ -17,6 +17,7 @@ import (
 
 	"oil-price-tracker/fetcher/internal/amqp"
 	"oil-price-tracker/fetcher/internal/config"
+	"oil-price-tracker/fetcher/internal/metrics"
 	"oil-price-tracker/fetcher/internal/pgmq"
 	"oil-price-tracker/fetcher/internal/provider"
 	"oil-price-tracker/fetcher/internal/schedule"
@@ -70,6 +71,12 @@ func main() {
 	}
 
 	collector := service.New(priceProvider, publisher)
+
+	fetcherMetrics := metrics.New(func() bool {
+		running, _, _ := collector.Status()
+		return running
+	})
+	collector.Observe(fetcherMetrics.ObserveCollection)
 
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
@@ -131,6 +138,8 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	mux.Handle("GET /metrics", fetcherMetrics)
+
 	mux.HandleFunc("GET /health", func(
 		response http.ResponseWriter,
 		_ *http.Request,
@@ -163,7 +172,7 @@ func main() {
 		)
 	})
 
-	mux.HandleFunc("POST /v1/fetch", func(
+	mux.HandleFunc("POST /v1/fetch", fetcherMetrics.Instrument("POST /v1/fetch", func(
 		response http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -201,7 +210,7 @@ func main() {
 		}
 
 		writeJSON(response, http.StatusOK, result)
-	})
+	}))
 
 	server := &http.Server{
 		Addr:              configuration.ListenAddress,

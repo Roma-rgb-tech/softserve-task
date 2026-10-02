@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from . import metrics
 from .redis_session_store import RedisSessionStore
 from .session_store import PostgreSQLSessionStore
 from .sessions import SessionPreferences, resolve_session_id
@@ -30,6 +31,8 @@ SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "2592000"))
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 SESSION_BACKEND = os.getenv("SESSION_BACKEND", "postgresql").strip().lower()
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+# Port of the Prometheus metrics endpoint; 0 leaves it off.
+METRICS_PORT = int(os.getenv("METRICS_PORT", "0"))
 
 
 def create_session_store() -> RedisSessionStore | PostgreSQLSessionStore:
@@ -42,6 +45,7 @@ def create_session_store() -> RedisSessionStore | PostgreSQLSessionStore:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    metrics.serve(METRICS_PORT)
     app.state.client = httpx.AsyncClient(base_url=HISTORY_SERVICE_URL, timeout=10.0)
     try:
         yield
@@ -54,6 +58,8 @@ app = FastAPI(
     version="3.0.0",
     lifespan=lifespan,
 )
+# Health probes and static files would only drown out what visitors ask for.
+metrics.instrument(app, excluded=("/health", "/static"))
 app.state.session_store = create_session_store()
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

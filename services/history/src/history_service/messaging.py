@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy import text
 
+from . import metrics
 from .config import Settings
 from .database import SessionLocal
 from .repository import insert_batch
@@ -123,6 +124,7 @@ class PGMQConsumer:
                 },
             )
 
+            metrics.QUEUE_MESSAGES.labels(outcome="invalid").inc()
             self._archive_message(msg_id)
 
             return
@@ -143,6 +145,8 @@ class PGMQConsumer:
                 },
             )
 
+            metrics.QUEUE_MESSAGES.labels(outcome="failed").inc()
+
             if read_count >= self.settings.pgmq_max_attempts:
                 logger.error(
                     "PGMQ message exceeded retry limit",
@@ -152,11 +156,13 @@ class PGMQConsumer:
                     },
                 )
 
+                metrics.QUEUE_MESSAGES.labels(outcome="dropped").inc()
                 self._archive_message(msg_id)
 
             return
 
         self._archive_message(msg_id)
+        metrics.record_persisted(inserted, duplicates)
 
         logger.info(
             "PGMQ message persisted",
@@ -251,6 +257,7 @@ class AMQPConsumer:
                 },
             )
 
+            metrics.QUEUE_MESSAGES.labels(outcome="invalid").inc()
             await message.reject(requeue=False)
 
             return
@@ -267,6 +274,7 @@ class AMQPConsumer:
                 },
             )
 
+            metrics.QUEUE_MESSAGES.labels(outcome="invalid").inc()
             await message.reject(requeue=False)
 
             return
@@ -286,11 +294,17 @@ class AMQPConsumer:
                 },
             )
 
+            metrics.QUEUE_MESSAGES.labels(outcome="failed").inc()
+
+            if message.redelivered:
+                metrics.QUEUE_MESSAGES.labels(outcome="dropped").inc()
+
             await message.reject(requeue=not message.redelivered)
 
             return
 
         await message.ack()
+        metrics.record_persisted(inserted, duplicates)
 
         logger.info(
             "broker message persisted",

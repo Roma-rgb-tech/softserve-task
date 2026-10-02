@@ -15,9 +15,14 @@ type Publisher interface {
 	Publish(context.Context, []model.Observation) error
 }
 
+// Observer is told about every collection that ran: how long it took, how many
+// observations it published, and the error that ended it, if any.
+type Observer func(took time.Duration, published int, err error)
+
 type Service struct {
 	provider  provider.Provider
 	publisher Publisher
+	observe   Observer
 	running   bool
 	mu        sync.RWMutex
 	last      *model.FetchResult
@@ -28,7 +33,12 @@ func New(priceProvider provider.Provider, publisher Publisher) *Service {
 	return &Service{provider: priceProvider, publisher: publisher}
 }
 
-func (service *Service) Run(ctx context.Context, slot time.Time) (model.FetchResult, error) {
+// Observe registers the function told about every collection that runs.
+func (service *Service) Observe(observer Observer) {
+	service.observe = observer
+}
+
+func (service *Service) Run(ctx context.Context, slot time.Time) (result model.FetchResult, err error) {
 	service.mu.Lock()
 	if service.running {
 		service.mu.Unlock()
@@ -36,6 +46,12 @@ func (service *Service) Run(ctx context.Context, slot time.Time) (model.FetchRes
 	}
 	service.running = true
 	service.mu.Unlock()
+	started := time.Now()
+	defer func() {
+		if service.observe != nil {
+			service.observe(time.Since(started), result.Published, err)
+		}
+	}()
 	defer func() {
 		service.mu.Lock()
 		service.running = false
@@ -53,7 +69,7 @@ func (service *Service) Run(ctx context.Context, slot time.Time) (model.FetchRes
 		service.recordError(err)
 		return model.FetchResult{}, fmt.Errorf("publish observations: %w", err)
 	}
-	result := model.FetchResult{
+	result = model.FetchResult{
 		ScheduledFor: slot.UTC(), FetchedAt: time.Now().UTC(), Observations: len(observations),
 		Published: len(observations),
 	}
