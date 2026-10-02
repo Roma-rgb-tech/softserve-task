@@ -46,6 +46,14 @@ data:
             href: http://headlamp.{{ cluster_app_internal_domain }}
             description: Everything in the cluster, read-only
             siteMonitor: http://headlamp.headlamp.svc.cluster.local
+        - Grafana:
+            href: http://grafana.{{ cluster_app_internal_domain }}
+            description: The OilScope dashboard and the cluster's own
+            siteMonitor: http://kube-prometheus-stack-grafana.{{ cluster_app_monitoring_namespace }}.svc.cluster.local/api/health
+        - Prometheus:
+            href: http://prometheus.{{ cluster_app_internal_domain }}
+            description: Metrics of every service, node and database instance
+            siteMonitor: http://kube-prometheus-stack-prometheus.{{ cluster_app_monitoring_namespace }}.svc.cluster.local:9090/-/healthy
         - PostgreSQL:
             description: CloudNativePG, {{ cluster_app_database_instances }} instances
             siteMonitor: http://{{ cluster_app_database_cluster }}-metrics.{{ cluster_app_namespace }}.svc.cluster.local:9187/metrics
@@ -167,97 +175,6 @@ spec:
             runAsGroup: 1000
             capabilities:
               drop: ["ALL"]
-          resources:
-            requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              memory: 256Mi
-      volumes:
-        - name: config
-          configMap:
-            name: homepage
-        - name: logs
-          emptyDir: {}
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: homepage
-  namespace: {{ ns }}
----
-# Enough to draw the cluster and node widgets: node and pod metrics, nothing
-# that can change anything.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homepage
-rules:
-  - apiGroups: [""]
-    resources: ["namespaces", "pods", "nodes"]
-    verbs: ["get", "list"]
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list"]
-  - apiGroups: ["metrics.k8s.io"]
-    resources: ["nodes", "pods"]
-    verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: homepage
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: homepage
-subjects:
-  - kind: ServiceAccount
-    name: homepage
-    namespace: {{ ns }}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: homepage
-  namespace: {{ ns }}
-  labels:
-    app.kubernetes.io/name: homepage
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: homepage
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: homepage
-      annotations:
-        # A changed page restarts the pod, which reads the files only at start.
-        checksum/config: "{{ page | hash('sha1') }}"
-    spec:
-      serviceAccountName: homepage
-      containers:
-        - name: homepage
-          image: {{ cluster_app_homepage_image }}
-          ports:
-            - name: http
-              containerPort: 3000
-          env:
-            - name: HOMEPAGE_ALLOWED_HOSTS
-              value: {{ host }}
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-            - name: logs
-              mountPath: /app/config/logs
-          readinessProbe:
-            httpGet:
-              path: /
-              port: http
-              httpHeaders:
-                - name: Host
-                  value: {{ host }}
           resources:
             requests:
               cpu: 10m
