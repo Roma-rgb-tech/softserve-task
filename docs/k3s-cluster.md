@@ -56,16 +56,53 @@ tailscale up --accept-routes
 The kubeconfig lands in `~/.kube/<name_prefix>-<environment>.yaml` (override
 with `OILSCOPE_KUBECONFIG`) and points at the first server's private address.
 
-Headlamp and Homepage answer on plain HTTP under `cluster.internal_domain`, and
-only to requests from the clouds' private ranges - which is how the tailnet
-presents the operator, and never how a visitor from the internet arrives.
-Point the names at any node's private address:
+Headlamp, Homepage, Grafana and Prometheus answer on plain HTTP under
+`cluster.internal_domain`, and only to requests from the clouds' private
+ranges - which is how the tailnet presents the operator, and never how a
+visitor from the internet arrives.
 
-```
-10.10.1.5  headlamp.oilscope.internal homepage.oilscope.internal
+The names resolve without any setup on the operator's machine. CoreDNS on each
+bastion answers for the domain with every node's private address, and the
+tailnet's split DNS sends the domain's queries to the bastions
+(`internal_dns` role). Keep "Use Tailscale DNS" on in the client:
+
+```bash
+dig grafana.oilscope.internal +short     # the nodes' private addresses
+open http://homepage.oilscope.internal
 ```
 
-Headlamp asks for a token; `site.yml` prints the command that reads it.
+Headlamp asks for a token, Grafana for `admin` and the password in the
+`GRAFANA_ADMIN_PASSWORD` container; `site.yml` prints where to find both.
+
+## Monitoring
+
+kube-prometheus-stack runs Prometheus (three days of history), its operator,
+node-exporter, kube-state-metrics and Grafana; Alertmanager is off while the
+clouds' own monitoring sends the alerts. Prometheus scrapes whatever a
+ServiceMonitor or PodMonitor points it at:
+
+| Target | Endpoint | What it says |
+| --- | --- | --- |
+| history, ui | `:9100/metrics`, a port of its own | `http_requests_total`, `http_request_duration_seconds` by route template; history also `history_queue_messages_total`, `history_observations_total` |
+| fetcher | `:8002/metrics` | `fetcher_collections_total`, `fetcher_observations_published_total`, `fetcher_last_success_timestamp_seconds`, `fetcher_collection_running` |
+| PostgreSQL | every CNPG instance, `:9187` | replication, connections, `cnpg_collector_up` |
+| Traefik | every pod, `:9100` | requests per entry point and router |
+| nodes, pods | node-exporter, kubelet, kube-state-metrics | CPU, memory, disk, restarts |
+
+The Python services serve their metrics on a separate port so the public
+ingress, which routes every path of the UI, can never expose them. The
+fetcher writes the text format itself rather than pull in a client library
+for five numbers.
+
+The OilScope dashboard is `files/oilscope-dashboard.json` in the
+`cluster_app` role, loaded by Grafana's sidecar from a labelled ConfigMap, so
+it changes through the repository rather than in Grafana.
+
+Why Prometheus and not only Grafana: Grafana draws, it stores nothing. A
+collector such as Grafana Alloy gathers metrics but still has to send them
+somewhere that keeps them and answers PromQL - Prometheus, Mimir or Grafana
+Cloud. Prometheus is that store here, and it also discovers the targets
+through the Kubernetes API and evaluates the alerting rules.
 
 ## Running it
 
@@ -74,6 +111,10 @@ terraform -chdir=infrastructure/terraform apply
 ansible-playbook -i infrastructure/ansible/inventory \
   oilscope.platform.site -e project_config_path="$OILSCOPE_PROJECT_CONFIG"
 ```
+
+The cluster runs the images tagged with `registry.image_sha`. After a change to
+a service, run the "Publish application images" workflow on the branch and put
+the commit it built into `registry.image_sha`.
 
 The controller needs `helm` on the PATH and the Python `kubernetes` package
 (`infrastructure/ansible/requirements.txt`), and the `kubernetes.core`
@@ -92,11 +133,14 @@ one at a time, the agents, then everything in the cluster from the controller.
 | cert-manager | Helm, `cluster_platform` | `ClusterIssuer letsencrypt`, DNS-01 through Cloudflare. |
 | CloudNativePG operator | Helm, `cluster_platform` | |
 | Headlamp | Helm, `cluster_platform` | Read-only `headlamp-operator` service account for signing in. |
+| Prometheus, Grafana | Helm, `cluster_platform` | kube-prometheus-stack; Grafana's admin password from the cloud secret store. |
+| Internal names | `internal_dns` role, on the bastions | CoreDNS for `cluster.internal_domain`, tailnet split DNS. |
 | Redis | Helm, `cluster_app` | Bitnami chart with the `bitnamilegacy` image, standalone. |
 | PostgreSQL | `Cluster` resource, `cluster_app` | The project's database image (PGMQ, pg_cron) through an `ImageCatalog`. Extensions and the queue are created once at bootstrap. Metrics on `oilscope-db-metrics:9187`. |
 | Migrations | `Job`, `cluster_app` | One Job per image tag. |
 | history, fetcher, ui | Deployments, `cluster_app` | One replica each. |
 | Homepage | Manifests, `cluster_app` | Configured entirely by a ConfigMap; a status light per service. |
+| ServiceMonitors, dashboard | Manifests, `cluster_app` | The services, the database and the OilScope dashboard. |
 
 ## Not carried over yet
 
