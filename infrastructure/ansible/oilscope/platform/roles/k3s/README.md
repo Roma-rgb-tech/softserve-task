@@ -2,7 +2,8 @@
 
 Installs k3s on the hosts of the `k3s_server` and `k3s_agent` groups, which the
 oilscope inventory plugin builds from the VMs' role labels. Grown out of
-`labs/k3s`, with the single-server limit replaced by embedded etcd.
+the single-server Multipass lab that used to live in `labs/k3s` (see the git
+history), with the single-server limit replaced by embedded etcd.
 
 - The first server of the group starts etcd with `cluster-init`; the others join
   it with the token it wrote. Run them one at a time (`serial: 1`), as

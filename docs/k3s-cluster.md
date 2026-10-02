@@ -142,6 +142,18 @@ one at a time, the agents, then everything in the cluster from the controller.
 | Homepage | Manifests, `cluster_app` | Configured entirely by a ConfigMap; a status light per service. |
 | ServiceMonitors, dashboard | Manifests, `cluster_app` | The services, the database and the OilScope dashboard. |
 
+## Trying it out
+
+`docs/examples/whoami.yaml` is a three-replica Deployment behind an Ingress.
+Apply it and repeat a request: the hostname in the answer changes as the
+Service spreads the requests over the pods on different nodes.
+
+```bash
+kubectl apply -f docs/examples/whoami.yaml
+curl -s -H 'Host: whoami.oilscope.internal' http://10.10.1.5/ | grep Hostname
+kubectl delete -f docs/examples/whoami.yaml
+```
+
 ## Not carried over yet
 
 - The monitoring agents (`playbooks/monitoring.yml`) still expect Docker
