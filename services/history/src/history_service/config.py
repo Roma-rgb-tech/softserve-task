@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Port of the Prometheus metrics endpoint; 0 leaves it off.
+    metrics_port: int = 0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
