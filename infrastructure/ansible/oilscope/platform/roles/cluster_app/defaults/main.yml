@@ -42,4 +42,7 @@ cluster_app_redis_host: "{{ cluster_app_redis_release }}-master"
 cluster_app_homepage_image: ghcr.io/gethomepage/homepage:v2.4.0
 cluster_app_homepage_namespace: homepage
 
+# Where Grafana looks for dashboards and Prometheus lives.
+cluster_app_monitoring_namespace: monitoring
+
 cluster_app_wait_timeout: 600

@@ -29,6 +29,8 @@ crash.log
 crash.*.log
 *.json
 !infrastructure/terraform/*.json
+# Grafana dashboards shipped with the Ansible roles
+!infrastructure/ansible/oilscope/platform/roles/*/files/*-dashboard.json
 # Credentials and private keys
 *.pem
 *.key

@@ -74,6 +74,7 @@
       vars:
         cluster_platform_cloudflare_token: "{{ oilscope_secrets.CF_DNS_API_TOKEN | default('') }}"
         cluster_platform_acme_email: "{{ oilscope_public_endpoint.acme_email | default('') }}"
+        cluster_platform_grafana_password: "{{ oilscope_secrets.GRAFANA_ADMIN_PASSWORD | default('') }}"
 
     - role: oilscope.platform.cluster_app
       vars:

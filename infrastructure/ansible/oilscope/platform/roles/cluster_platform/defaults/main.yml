@@ -22,6 +22,11 @@ cluster_platform_charts:
     chart: cloudnative-pg
     version: "^0.29.0"
     namespace: cnpg-system
+  monitoring:
+    repo: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    version: "^91.0.0"
+    namespace: monitoring
   headlamp:
     repo: https://kubernetes-sigs.github.io/headlamp/
     chart: headlamp
@@ -33,6 +38,7 @@ cluster_platform_charts:
 cluster_platform_acme_server: https://acme-v02.api.letsencrypt.org/directory
 cluster_platform_acme_email: ""
 cluster_platform_cloudflare_token: ""
+cluster_platform_grafana_password: ""
 
 cluster_platform_internal_domain: "{{ oilscope_internal_domain }}"
 cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"

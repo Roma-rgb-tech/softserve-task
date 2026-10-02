@@ -110,6 +110,12 @@
     wait: true
     wait_timeout: "{{ cluster_app_wait_timeout }}"
 
+- name: Scrape the services and the database, and add the dashboard
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: monitors.yaml.j2
+
 - name: Deploy Homepage
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_app_kubeconfig }}"
@@ -124,3 +130,4 @@
       - "Site: https://{{ cluster_app_endpoint.hostname }}"
       - "Homepage (tailnet only): http://homepage.{{ cluster_app_internal_domain }}"
       - "Headlamp (tailnet only): http://headlamp.{{ cluster_app_internal_domain }}"
+      - "Grafana (tailnet only): http://grafana.{{ cluster_app_internal_domain }}"

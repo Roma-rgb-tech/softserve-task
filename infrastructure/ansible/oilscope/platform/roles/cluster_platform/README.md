@@ -8,6 +8,7 @@ controller as Helm releases, each with a short values file in `files/values`:
 | traefik | traefik | Ingress on every node (DaemonSet), default IngressClass |
 | cert-manager | cert-manager | `ClusterIssuer letsencrypt`, DNS-01 through Cloudflare |
 | cnpg | cnpg-system | The CloudNativePG operator |
+| kube-prometheus-stack | monitoring | Prometheus, Grafana, node-exporter, kube-state-metrics; reachable only from the private ranges |
 | headlamp | headlamp | Dashboard, reachable only from the private ranges |
 
 Chart versions are Helm constraints in `cluster_platform_charts`, so patch

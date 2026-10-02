@@ -6,19 +6,19 @@
 #}
 {% set image = cluster_app_repository ~ '/%s:' ~ cluster_app_image_tag %}
 {% set services = [
-  {'name': 'history', 'port': 8001, 'url_key': 'HISTORY_DATABASE_URL',
-   'env': {'QUEUE_BACKEND': 'pgmq', 'PGMQ_QUEUE': 'price_observations',
+  {'name': 'history', 'port': 8001, 'metrics_port': 9100, 'url_key': 'HISTORY_DATABASE_URL',
+   'env': {'METRICS_PORT': '9100', 'QUEUE_BACKEND': 'pgmq', 'PGMQ_QUEUE': 'price_observations',
            'PGMQ_VISIBILITY_TIMEOUT_SECONDS': '60', 'PGMQ_POLL_INTERVAL_SECONDS': '1',
            'PGMQ_MAX_ATTEMPTS': '5', 'LOG_LEVEL': 'INFO', 'TZ': 'UTC'},
    'secret_env': {}},
-  {'name': 'fetcher', 'port': 8002, 'url_key': 'FETCHER_DATABASE_URL',
+  {'name': 'fetcher', 'port': 8002, 'metrics_port': none, 'url_key': 'FETCHER_DATABASE_URL',
    'env': {'QUEUE_BACKEND': 'pgmq', 'PGMQ_QUEUE': 'price_observations',
            'DATA_PROVIDER': 'oilpriceapi', 'FETCH_CRON_HOURS': '0,6,12,18',
            'FETCH_TIMEZONE': 'UTC', 'FETCH_ON_STARTUP': 'true',
            'REQUEST_TIMEOUT_SECONDS': '15', 'LISTEN_ADDRESS': '0.0.0.0:8002', 'TZ': 'UTC'},
    'secret_env': {'OILPRICEAPI_KEY': 'OILPRICEAPI_KEY'}},
-  {'name': 'ui', 'port': 8080, 'url_key': 'UI_DATABASE_URL',
-   'env': {'HISTORY_SERVICE_URL': 'http://history:8001', 'SESSION_BACKEND': 'redis',
+  {'name': 'ui', 'port': 8080, 'metrics_port': 9100, 'url_key': 'UI_DATABASE_URL',
+   'env': {'METRICS_PORT': '9100', 'HISTORY_SERVICE_URL': 'http://history:8001', 'SESSION_BACKEND': 'redis',
            'SESSION_TTL_SECONDS': '2592000', 'SESSION_COOKIE_SECURE': 'true',
            'LOG_LEVEL': 'INFO', 'TZ': 'UTC'},
    'secret_env': {'REDIS_URL': 'REDIS_URL'}},
@@ -52,6 +52,10 @@ spec:
           ports:
             - name: http
               containerPort: {{ service.port }}
+{% if service.metrics_port %}
+            - name: metrics
+              containerPort: {{ service.metrics_port }}
+{% endif %}
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -96,6 +100,9 @@ kind: Service
 metadata:
   name: {{ service.name }}
   namespace: {{ cluster_app_namespace }}
+  labels:
+    app.kubernetes.io/name: {{ service.name }}
+    app.kubernetes.io/part-of: oilscope
 spec:
   selector:
     app.kubernetes.io/name: {{ service.name }}
@@ -103,6 +110,11 @@ spec:
     - name: http
       port: {{ service.port }}
       targetPort: http
+{% if service.metrics_port %}
+    - name: metrics
+      port: {{ service.metrics_port }}
+      targetPort: metrics
+{% endif %}
 {% endfor %}
 ---
 apiVersion: traefik.io/v1alpha1
