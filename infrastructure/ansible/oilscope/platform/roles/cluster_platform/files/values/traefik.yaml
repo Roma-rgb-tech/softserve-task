@@ -5,13 +5,30 @@
 deployment:
   kind: DaemonSet
 
-# k3s answers for LoadBalancer services with ServiceLB, which binds ports 80
-# and 443 on every node. Local keeps each request on the node it arrived at,
-# which also keeps the visitor's address for the internal-only allow list.
+# A surge pod would wait forever for the host ports the old one still holds,
+# so a node gives up its Traefik first and gets the new one straight after.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 0
+
+# Traefik takes ports 80 and 443 on every node itself, through hostPort,
+# rather than behind ServiceLB. ServiceLB's svclb pods masquerade what they
+# forward, so Traefik would see every visitor as a pod address and could not
+# tell the operator (arriving from the bastion's private address over the
+# tailnet) from the internet - the internal-only allow list would refuse both.
+# The CNI's portmap plugin only rewrites the destination, so the source
+# address survives. The Service stays for the metrics and the dashboard.
+ports:
+  web:
+    hostPort: 80
+  websecure:
+    hostPort: 443
+
 service:
   spec:
-    type: LoadBalancer
-    externalTrafficPolicy: Local
+    type: ClusterIP
 
 ingressClass:
   enabled: true
@@ -22,8 +39,9 @@ providers:
     enabled: true
   kubernetesIngress:
     enabled: true
+    # With no load balancer there is no address to publish on the Ingresses.
     publishedService:
-      enabled: true
+      enabled: false
 
 resources:
   requests:
