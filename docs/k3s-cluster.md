@@ -129,7 +129,7 @@ one at a time, the agents, then everything in the cluster from the controller.
 | Piece | Installed by | Notes |
 | --- | --- | --- |
 | k3s | `k3s` role | Release binary checked against its SHA-256, no install script. Bundled Traefik disabled. |
-| Traefik | Helm, `cluster_platform` | DaemonSet behind ServiceLB with `externalTrafficPolicy: Local`. |
+| Traefik | Helm, `cluster_platform` | DaemonSet on host ports 80/443, so the visitor's address reaches the allow lists. |
 | cert-manager | Helm, `cluster_platform` | `ClusterIssuer letsencrypt`, DNS-01 through Cloudflare. |
 | CloudNativePG operator | Helm, `cluster_platform` | |
 | Headlamp | Helm, `cluster_platform` | Read-only `headlamp-operator` service account for signing in. |
