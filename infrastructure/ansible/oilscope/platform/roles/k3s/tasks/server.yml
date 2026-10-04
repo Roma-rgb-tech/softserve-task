@@ -26,6 +26,10 @@
   vars:
     k3s_common:
       node-ip: "{{ k3s_node_ip }}"
+      # Without this a server with a public address advertises that one in
+      # the kubernetes Service's endpoints, and every node and pod that picks
+      # it reaches for port 6443 through the internet, where it is closed.
+      advertise-address: "{{ k3s_node_ip }}"
       tls-san: "{{ k3s_tls_sans }}"
       disable: "{{ k3s_disable }}"
       write-kubeconfig-mode: "0600"

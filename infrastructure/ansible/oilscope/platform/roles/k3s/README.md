@@ -13,7 +13,7 @@ history), with the single-server limit replaced by embedded etcd.
   SHA-256, so a second run downloads nothing and a new `k3s.version` downloads
   exactly once. Configuration lives in `/etc/rancher/k3s/config.yaml`; a change
   to it restarts the service through a handler instead of being skipped.
-- `node-ip` is the private address from the inventory, `node-external-ip` the
+- `node-ip` and `advertise-address` are the private address from the inventory, `node-external-ip` the
   public one when there is one, and `tls-san` covers every server's addresses
   plus `k3s.tls_sans` from the project configuration.
 - The bundled Traefik is disabled; `cluster_platform` installs it from Helm.
