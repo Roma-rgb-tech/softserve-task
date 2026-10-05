@@ -24,6 +24,13 @@ resource "google_container_cluster" "main" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
+  # The throwaway default pool runs as the nodes' account too, not as the
+  # Compute Engine default one, which some projects have disabled.
+  node_config {
+    service_account = google_service_account.nodes[0].email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
   min_master_version  = local.version
   deletion_protection = false
 
@@ -63,9 +70,11 @@ resource "google_container_cluster" "main" {
 
   resource_labels = local.labels
 
-  depends_on = [google_compute_router_nat.nodes, google_project_service.container]
+  depends_on = [google_compute_router_nat.nodes, google_project_service.container, google_project_iam_member.nodes]
 
   lifecycle {
+    # Only the deleted default pool used it; never rebuild the cluster over it.
+    ignore_changes = [node_config]
     precondition {
       condition     = local.zone != null && local.region != null
       error_message = "catalog.zone.gcp and catalog.region.gcp need an entry for default_region ${local.token}."

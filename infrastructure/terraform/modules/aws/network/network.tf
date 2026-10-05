@@ -26,7 +26,7 @@ resource "aws_subnet" "management" {
 
   map_public_ip_on_launch = false
 
-  tags = merge(local.tags, { Name = "${local.prefix}-management" })
+  tags = merge(local.tags, { Name = "${local.prefix}-management" }, local.eks_elb_tags)
 }
 
 resource "aws_subnet" "workload" {

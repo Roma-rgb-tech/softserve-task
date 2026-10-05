@@ -13,8 +13,10 @@ resource "aws_subnet" "nodes" {
 
   map_public_ip_on_launch = false
 
-  # The cloud controller puts an internal load balancer only into subnets that
-  # carry the internal-elb role, and only the nodes' own zone gets it.
+  # The internal-elb role marks where internal load balancers may go; which
+  # subnet each one actually uses is pinned by name in its Service annotation
+  # (cluster_platform), because the cloud controller would otherwise also put
+  # one into the second zone, where no node runs.
   tags = merge(local.tags, {
     Name                                  = "${local.prefix}-eks-${each.key}"
     "kubernetes.io/cluster/${local.name}" = "shared"
@@ -28,17 +30,4 @@ resource "aws_route_table_association" "nodes" {
 
   subnet_id      = aws_subnet.nodes[each.key].id
   route_table_id = var.route_table_ids["workload"]
-}
-
-# The internet-facing load balancer goes into the public management subnet,
-# next to the bastion and the NAT gateway.
-resource "aws_ec2_tag" "public_elb_role" {
-  for_each = local.enabled ? {
-    "kubernetes.io/role/elb"              = "1"
-    "kubernetes.io/cluster/${local.name}" = "shared"
-  } : {}
-
-  resource_id = var.subnets["management"]
-  key         = each.key
-  value       = each.value
 }

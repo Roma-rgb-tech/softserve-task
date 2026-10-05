@@ -58,7 +58,8 @@ Optional fields (see `project-config.schema.json`):
 | `node_count` | `3` | Nodes in the single node pool. |
 | `node_size` | `medium` | Portable size, through `catalog.size`. |
 | `node_disk_gb` | `30` | Boot disk per node. |
-| `node_subnet_cidr` | third `/24` of the cloud's `vpc_cidr` | Node subnet (on AWS the fourth `/24` is added in a second zone). |
+| `node_subnet_cidr` | `x.x.10.0/24` of the cloud's `vpc_cidr` | Node subnet. |
+| `node_secondary_subnet_cidr` | `x.x.11.0/24` | AWS only: the second zone EKS asks for (no nodes there). |
 | `pod_cidr` | `10.40.0.0/16` | GKE secondary range / AKS overlay. EKS pods use node-subnet addresses. |
 | `service_cidr` | `10.41.0.0/20` | ClusterIP range. |
 | `control_plane_cidr` | `172.16.0.0/28` | GKE only: the private control plane's peering range. |
@@ -143,6 +144,23 @@ kubectl get nodes -o wide        # the managed nodes, from the new current conte
 kubectl get svc -n traefik       # the two load balancers and their addresses
 ```
 
+## Tearing it down
+
+The two Traefik load balancers, and on EKS the volumes, are created by the
+cluster, not by Terraform. Remove them first, or the network they sit in
+cannot be deleted (AWS refuses with `DependencyViolation`, GCP keeps the
+subnet busy):
+
+```bash
+helm uninstall traefik -n traefik
+kubectl delete pvc --all -A          # EBS / Persistent Disk volumes
+kubectl get svc -A | grep LoadBalancer   # wait until nothing is listed
+cd infrastructure/terraform && terraform destroy -var="project_config_path=$OILSCOPE_PROJECT_CONFIG"
+```
+
+The Cloudflare record Ansible wrote stays; delete it in Cloudflare if the
+stand is gone for good.
+
 ## Moving between clouds
 
 One stand runs one cluster. To show the same application on another cloud,
@@ -157,7 +175,8 @@ The bastion follows `default_cloud`, which puts it next to the cluster: it is
 the tailnet's way to the internal load balancer. Applying another cloud's
 configuration in the same Terraform workspace moves the stand - the old
 cluster and bastion are destroyed, the new ones created. After a move, forget
-the old bastion's host key (`ssh-keygen -R`) as after any rebuild.
+the old bastion's host key (`ssh-keygen -R`) as after any rebuild. Run the
+teardown steps above against the old cluster first.
 
 ## Dashboards
 
@@ -185,5 +204,8 @@ provider's, and is not scraped.
   Terraform does not track it. Before switching back to k3s, delete the record
   (or let `terraform apply` fail once on "record already exists", delete it,
   and apply again).
+- **Managed database + managed cluster** is only wired up on GCP so far;
+  elsewhere keep `database.managed` false (CloudNativePG in the cluster).
+  Terraform refuses the combination.
 - **GKE volumes start at 10 GB**, so on GKE the Prometheus and database claims
   are raised to 10 Gi.

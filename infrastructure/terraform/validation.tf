@@ -37,6 +37,27 @@ resource "terraform_data" "config_validation" {
       error_message = "kubernetes.cloud is ${local.kubernetes_cloud}, but no bastion is there (bastions: ${join(", ", local.bastion_clouds)}). Put the bastion in the cluster's cloud - set default_cloud, or the bastion's cloud key, to ${local.kubernetes_cloud}."
     }
 
+    # The cluster's subnets are checked against the database's, which share
+    # the same network.
+    precondition {
+      condition = !local.managed_kubernetes || length(setintersection(
+        toset(lookup(local.config.network, "database_subnet_cidrs", [])),
+        toset(compact([
+          lookup(local.kubernetes, "node_subnet_cidr", ""),
+          lookup(local.kubernetes, "node_secondary_subnet_cidr", ""),
+        ])),
+      )) == 0
+      error_message = "kubernetes.node_subnet_cidr / node_secondary_subnet_cidr must not be one of network.database_subnet_cidrs."
+    }
+
+    # On AWS and Azure the managed database only admits the k3s nodes' security
+    # group or subnet. Until it admits the managed cluster's too, the two do
+    # not go together there.
+    precondition {
+      condition     = !local.managed_kubernetes || !lookup(lookup(local.config, "database", {}), "managed", false) || local.kubernetes_cloud == "gcp"
+      error_message = "A managed database together with a managed cluster is only wired up on GCP so far. Keep database.managed false - the database then runs in the cluster as CloudNativePG."
+    }
+
     precondition {
       condition     = !local.managed_kubernetes || anytrue([for name, vm in local.config.vms : contains(["k3s_server", "k3s_agent"], vm.role) && length(lookup(vm, "secret_mappings", {})) > 0])
       error_message = "A managed cluster still reads its secrets through the secret_mappings of a k3s_server entry. Keep that entry in vms - Terraform skips the VM itself while kubernetes.managed is true."

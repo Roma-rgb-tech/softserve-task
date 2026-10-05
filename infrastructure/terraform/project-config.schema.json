@@ -723,7 +723,16 @@
           "default": 30
         },
         "node_subnet_cidr": {
-          "description": "Subnet the nodes are placed in. Defaults to the third /24 of the cloud's vpc_cidr. On AWS a second subnet, the fourth /24, is added in another zone because EKS asks for two.",
+          "description": "Subnet the nodes are placed in. Defaults to the eleventh /24 of the cloud's vpc_cidr (x.x.10.0/24), clear of the x.x.2-3 ranges docs/managed-database.md suggests for database_subnet_cidrs.",
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+            }
+          ]
+        },
+        "node_secondary_subnet_cidr": {
+          "description": "AWS only: the second zone's subnet EKS asks for. Defaults to x.x.11.0/24.",
           "allOf": [
             {
               "type": "string",

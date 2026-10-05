@@ -4,7 +4,8 @@ output "cluster" {
     cloud    = local.cloud
     kind     = "aks"
     name     = azurerm_kubernetes_cluster.main[0].name
-    location = var.resource_group_name
+    location = var.location
+    group    = var.resource_group_name
     project  = null
     endpoint = azurerm_kubernetes_cluster.main[0].fqdn
     version  = azurerm_kubernetes_cluster.main[0].current_kubernetes_version

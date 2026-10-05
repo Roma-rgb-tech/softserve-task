@@ -9,7 +9,7 @@ locals {
   name    = "${local.prefix}-aks"
 
   vpc_cidr     = var.config.network.vpc_cidr
-  node_cidr    = lookup(local.settings, "node_subnet_cidr", cidrsubnet(local.vpc_cidr, 8, 2))
+  node_cidr    = lookup(local.settings, "node_subnet_cidr", cidrsubnet(local.vpc_cidr, 8, 10))
   pod_cidr     = lookup(local.settings, "pod_cidr", "10.40.0.0/16")
   service_cidr = lookup(local.settings, "service_cidr", "10.41.0.0/20")
 

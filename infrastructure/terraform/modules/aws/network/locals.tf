@@ -14,4 +14,14 @@ locals {
       zone       = data.aws_availability_zones.available[0].names[index % length(data.aws_availability_zones.available[0].names)]
     }
   }
+
+  # An EKS cluster's internet-facing load balancer goes into the public
+  # management subnet, which the cloud controller finds by these tags. They
+  # live here, on the subnet's own tags, so the two never fight over them.
+  kubernetes = lookup(var.config, "kubernetes", {})
+  eks        = lookup(local.kubernetes, "managed", false) && lookup(local.kubernetes, "cloud", local.default) == local.cloud
+  eks_elb_tags = local.eks ? {
+    "kubernetes.io/role/elb"                                                        = "1"
+    "kubernetes.io/cluster/${var.config.name_prefix}-${var.config.environment}-eks" = "shared"
+  } : {}
 }

@@ -5,6 +5,7 @@ output "cluster" {
     kind     = "gke"
     name     = google_container_cluster.main[0].name
     location = local.zone
+    group    = null
     project  = local.project
     endpoint = google_container_cluster.main[0].endpoint
     version  = google_container_cluster.main[0].master_version

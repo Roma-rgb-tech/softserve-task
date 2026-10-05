@@ -53,6 +53,7 @@
            }
          } if cluster_platform_managed | bool else {} }}
     wait: true
+    wait_timeout: "{{ cluster_platform_traefik_timeout }}"
 
 - name: Install cert-manager
   kubernetes.core.helm:

@@ -7,6 +7,7 @@ output "cluster" {
     kind     = "eks"
     name     = aws_eks_cluster.main[0].name
     location = data.aws_region.current.region
+    group    = null
     project  = null
     endpoint = aws_eks_cluster.main[0].endpoint
     version  = aws_eks_cluster.main[0].version

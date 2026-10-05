@@ -49,6 +49,10 @@ cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"
 cluster_platform_managed: "{{ oilscope_kubernetes_managed | bool }}"
 cluster_platform_cloud: "{{ oilscope_kubernetes_cloud }}"
 
+# A cloud load balancer can take several minutes to get its address, which
+# Helm waits for; on AKS the network role it needs may still be propagating.
+cluster_platform_traefik_timeout: "{{ '15m' if cluster_platform_managed | bool else '5m' }}"
+
 # Prometheus' volume. Persistent Disk on GKE starts at 10 GB.
 cluster_platform_prometheus_storage: >-
   {{ '10Gi' if (cluster_platform_managed | bool and cluster_platform_cloud == 'gcp') else '5Gi' }}
@@ -61,12 +65,17 @@ cluster_platform_traefik_annotations:
     public: {}
     internal:
       networking.gke.io/load-balancer-type: Internal
+  # Each NLB is pinned to one subnet by its Name tag, both in the nodes' zone:
+  # left to itself the cloud controller adds one per zone, and the second
+  # zone has no node to send to.
   aws:
     public:
       service.beta.kubernetes.io/aws-load-balancer-type: nlb
+      service.beta.kubernetes.io/aws-load-balancer-subnets: "{{ oilscope_name_prefix | trim }}-management"
     internal:
       service.beta.kubernetes.io/aws-load-balancer-type: nlb
       service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+      service.beta.kubernetes.io/aws-load-balancer-subnets: "{{ oilscope_name_prefix | trim }}-eks-primary"
   azure:
     public: {}
     internal:

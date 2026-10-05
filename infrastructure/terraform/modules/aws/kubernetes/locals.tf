@@ -13,8 +13,11 @@ locals {
   # EKS asks for subnets in two zones for its control plane interfaces. The
   # nodes and both load balancers stay in the first, the bastion's zone, so a
   # load balancer never has a zone without a node behind it.
-  vpc_cidr   = var.config.network.vpc_cidr
-  node_cidrs = [lookup(local.settings, "node_subnet_cidr", cidrsubnet(local.vpc_cidr, 8, 2)), cidrsubnet(local.vpc_cidr, 8, 3)]
+  vpc_cidr = var.config.network.vpc_cidr
+  node_cidrs = [
+    lookup(local.settings, "node_subnet_cidr", cidrsubnet(local.vpc_cidr, 8, 10)),
+    lookup(local.settings, "node_secondary_subnet_cidr", cidrsubnet(local.vpc_cidr, 8, 11)),
+  ]
   other_zone = local.enabled ? one(slice([for zone in data.aws_availability_zones.available[0].names : zone if zone != local.zone], 0, 1)) : null
 
   node_subnets = local.enabled ? {
