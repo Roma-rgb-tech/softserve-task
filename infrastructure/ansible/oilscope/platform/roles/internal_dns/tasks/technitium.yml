@@ -1,0 +1,220 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# Technitium DNS Server in a container on the bastion: the same names as
+# CoreDNS answered, plus a web console to see and edit them, and a query log.
+#
+# Docker is told to keep its hands off the firewall. Left to itself it sets the
+# FORWARD chain to DROP, and the bastion is the tailnet's subnet router: every
+# forwarded packet to the cloud network would stop. The container uses the
+# host's network, so it needs no NAT rules of Docker's anyway.
+- name: Create Docker's configuration directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep Docker away from the firewall
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ {'iptables': false, 'ip6tables': false} | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Docker
+
+- name: Read the facts Docker's installation needs
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - "!min"
+      - distribution
+      - platform
+
+- name: Install Docker Engine
+  ansible.builtin.include_role:
+    name: oilscope.platform.docker_engine
+  vars:
+    docker_engine_group_members: []
+
+- name: Apply the firewall setting to a Docker that was already running
+  ansible.builtin.meta: flush_handlers
+
+# CoreDNS, from before, holds the same address and port.
+- name: Stop CoreDNS if an earlier run installed it
+  become: true
+  ansible.builtin.systemd_service:
+    name: coredns
+    state: stopped
+    enabled: false
+  register: internal_dns_coredns_stop
+  failed_when:
+    - internal_dns_coredns_stop is failed
+    - "'Could not find the requested service' not in internal_dns_coredns_stop.msg | default('')"
+
+- name: Create the configuration directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ internal_dns_technitium_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# Invented once, on the bastion, and never sent anywhere else. Technitium reads
+# it on its first start; read it with sudo on the bastion to sign in.
+- name: Invent the administrator password once
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ internal_dns_technitium_dir }}/admin-password"
+    content: "{{ lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  no_log: true
+
+- name: Read the administrator password
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ internal_dns_technitium_dir }}/admin-password"
+  register: internal_dns_technitium_password
+  no_log: true
+
+- name: Install the systemd unit
+  become: true
+  ansible.builtin.template:
+    src: technitium.service.j2
+    dest: /etc/systemd/system/technitium.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: internal_dns_technitium_unit
+
+- name: Start Technitium
+  become: true
+  ansible.builtin.systemd_service:
+    name: technitium
+    enabled: true
+    state: "{{ 'restarted' if internal_dns_technitium_unit is changed else 'started' }}"
+    daemon_reload: true
+
+- name: Wait for the web console and sign in
+  ansible.builtin.uri:
+    url: "{{ internal_dns_technitium_api }}/user/login"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      user: admin
+      pass: "{{ internal_dns_technitium_password.content | b64decode | trim }}"
+    return_content: true
+  register: internal_dns_technitium_login
+  until:
+    - internal_dns_technitium_login.status | default(0) == 200
+    - (internal_dns_technitium_login.json | default({})).status | default('') == 'ok'
+  # The first start pulls the image.
+  retries: 60
+  delay: 5
+  no_log: true
+
+- name: Keep the session token
+  ansible.builtin.set_fact:
+    internal_dns_technitium_token: "{{ internal_dns_technitium_login.json.token }}"
+  no_log: true
+
+# Every call below answers 200; whether it worked is in the body's status.
+- name: Answer only on the bastion's private address, and only for its own zones
+  ansible.builtin.uri:
+    url: "{{ internal_dns_technitium_api }}/settings/set"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ internal_dns_technitium_token }}"
+    body_format: form-urlencoded
+    body:
+      dnsServerLocalEndPoints: "{{ internal_dns_listen }}:53"
+      recursion: Deny
+    return_content: true
+  register: internal_dns_technitium_settings
+  failed_when: internal_dns_technitium_settings.json.status | default('') != 'ok'
+  changed_when: false
+
+- name: List the zones
+  ansible.builtin.uri:
+    url: "{{ internal_dns_technitium_api }}/zones/list"
+    headers:
+      Authorization: "Bearer {{ internal_dns_technitium_token }}"
+    return_content: true
+  register: internal_dns_technitium_zones
+  failed_when: internal_dns_technitium_zones.json.status | default('') != 'ok'
+
+- name: Create the zone of the operator pages
+  ansible.builtin.uri:
+    url: "{{ internal_dns_technitium_api }}/zones/create"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ internal_dns_technitium_token }}"
+    body_format: form-urlencoded
+    body:
+      zone: "{{ internal_dns_domain }}"
+      type: Primary
+    return_content: true
+  register: internal_dns_technitium_zone
+  failed_when: internal_dns_technitium_zone.json.status | default('') != 'ok'
+  changed_when: true
+  when: >-
+    internal_dns_domain not in
+    (internal_dns_technitium_zones.json.response.zones | default([]) | map(attribute='name') | list)
+
+# The first address of each name replaces whatever the name held, the rest are
+# added next to it, so a re-run converges on exactly these addresses.
+- name: Point each operator page at the cluster
+  ansible.builtin.uri:
+    url: "{{ internal_dns_technitium_api }}/zones/records/add"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ internal_dns_technitium_token }}"
+    body_format: form-urlencoded
+    body:
+      zone: "{{ internal_dns_domain }}"
+      domain: "{{ item.0 }}.{{ internal_dns_domain }}"
+      type: A
+      ipAddress: "{{ item.1 }}"
+      ttl: "{{ internal_dns_ttl }}"
+      overwrite: "{{ 'true' if item.1 == internal_dns_addresses[0] else 'false' }}"
+      comments: Managed by Ansible
+    return_content: true
+  register: internal_dns_technitium_record
+  failed_when: internal_dns_technitium_record.json.status | default('') != 'ok'
+  changed_when: false
+  loop: "{{ internal_dns_names | product(internal_dns_addresses) | list }}"
+  loop_control:
+    label: "{{ item.0 }} -> {{ item.1 }}"
+
+- name: Give the console a name of its own
+  ansible.builtin.uri:
+    url: "{{ internal_dns_technitium_api }}/zones/records/add"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ internal_dns_technitium_token }}"
+    body_format: form-urlencoded
+    body:
+      zone: "{{ internal_dns_domain }}"
+      domain: "{{ internal_dns_technitium_name }}.{{ internal_dns_domain }}"
+      type: A
+      ipAddress: "{{ internal_dns_listen }}"
+      ttl: "{{ internal_dns_ttl }}"
+      overwrite: "true"
+      comments: Managed by Ansible
+    return_content: true
+  register: internal_dns_technitium_console
+  failed_when: internal_dns_technitium_console.json.status | default('') != 'ok'
+  changed_when: false
+
+- name: Tell the operator where the console is
+  ansible.builtin.debug:
+    msg: >-
+      Technitium: http://{{ internal_dns_technitium_name }}.{{ internal_dns_domain }}:{{ internal_dns_technitium_port }}
+      - user admin, password: sudo cat {{ internal_dns_technitium_dir }}/admin-password on the bastion

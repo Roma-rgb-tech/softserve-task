@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Technitium DNS Server for {{ internal_dns_domain }}
+Documentation=https://technitium.com/dns/
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+# The host's network: no NAT of Docker's, and the server binds the bastion's
+# private address itself. The configuration directory keeps zones and settings
+# across restarts and image upgrades.
+ExecStartPre=-/usr/bin/docker rm --force technitium
+ExecStart=/usr/bin/docker run --rm --name technitium --network host \
+  --volume {{ internal_dns_technitium_dir }}:/etc/dns \
+  --env DNS_SERVER_DOMAIN={{ inventory_hostname }} \
+  --env DNS_SERVER_ADMIN_PASSWORD_FILE=/etc/dns/admin-password \
+  --env DNS_SERVER_WEB_SERVICE_LOCAL_ADDRESSES={{ internal_dns_listen }} \
+  --env DNS_SERVER_WEB_SERVICE_HTTP_PORT={{ internal_dns_technitium_port }} \
+  --env DNS_SERVER_RECURSION=Deny \
+  {{ internal_dns_technitium_image }}
+ExecStop=/usr/bin/docker stop technitium
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

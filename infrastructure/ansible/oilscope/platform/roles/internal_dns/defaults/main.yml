@@ -1,5 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+# Which server answers on the bastion: technitium (a container, with a web
+# console and a query log) or coredns (a single binary, configured from a file).
+internal_dns_server: technitium
+
+internal_dns_technitium_image: docker.io/technitium/dns-server:15.6.0
+internal_dns_technitium_dir: /var/lib/technitium
+internal_dns_technitium_port: 5380
+internal_dns_technitium_api: "http://{{ internal_dns_listen }}:{{ internal_dns_technitium_port }}/api"
+# The console's own name in the zone, next to the operator pages.
+internal_dns_technitium_name: dns
+
 internal_dns_version: v1.14.6
 internal_dns_release_url: https://github.com/coredns/coredns/releases/download
 

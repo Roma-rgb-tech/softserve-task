@@ -54,6 +54,9 @@ data:
             href: http://prometheus.{{ cluster_app_internal_domain }}
             description: Metrics of every service, node and database instance
             siteMonitor: http://kube-prometheus-stack-prometheus.{{ cluster_app_monitoring_namespace }}.svc.cluster.local:9090/-/healthy
+        - Technitium DNS:
+            href: http://dns.{{ cluster_app_internal_domain }}:5380
+            description: The internal names, on the bastion
         - PostgreSQL:
             description: CloudNativePG, {{ cluster_app_database_instances }} instances
             siteMonitor: http://{{ cluster_app_database_cluster }}-metrics.{{ cluster_app_namespace }}.svc.cluster.local:9187/metrics

@@ -8,79 +8,8 @@
     update_cache: true
     cache_valid_time: 3600
 
-# The binary goes into a directory named after the release, so a new
-# internal_dns_version is a new download and an unchanged one is none.
-- name: Create the directory for this CoreDNS release
-  become: true
-  ansible.builtin.file:
-    path: "{{ internal_dns_install_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Download the CoreDNS release, checked against its published checksum
-  become: true
-  ansible.builtin.get_url:
-    url: >-
-      {{ internal_dns_release_url }}/{{ internal_dns_version }}/coredns_{{ internal_dns_version[1:] }}_linux_amd64.tgz
-    checksum: >-
-      sha256:{{ internal_dns_release_url }}/{{ internal_dns_version }}/coredns_{{ internal_dns_version[1:] }}_linux_amd64.tgz.sha256
-    dest: "{{ internal_dns_install_dir }}/coredns.tgz"
-    owner: root
-    group: root
-    mode: "0644"
-
-# The directory carries the version, so its binary can only ever be the one
-# this release ships; a missing binary is the only reason to unpack.
-- name: Unpack the binary
-  become: true
-  ansible.builtin.unarchive:
-    src: "{{ internal_dns_install_dir }}/coredns.tgz"
-    dest: "{{ internal_dns_install_dir }}"
-    remote_src: true
-    owner: root
-    group: root
-    mode: "0755"
-    creates: "{{ internal_dns_install_dir }}/coredns"
-  notify: Restart CoreDNS
-
-- name: Create the configuration directory
-  become: true
-  ansible.builtin.file:
-    path: "{{ internal_dns_config_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Write the zone of the operator pages
-  become: true
-  ansible.builtin.template:
-    src: Corefile.j2
-    dest: "{{ internal_dns_config_dir }}/Corefile"
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart CoreDNS
-
-- name: Install the systemd unit
-  become: true
-  ansible.builtin.template:
-    src: coredns.service.j2
-    dest: /etc/systemd/system/coredns.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart CoreDNS
-
-- name: Start CoreDNS
-  become: true
-  ansible.builtin.systemd_service:
-    name: coredns
-    enabled: true
-    state: started
-    daemon_reload: true
+- name: Run the chosen DNS server
+  ansible.builtin.include_tasks: "{{ internal_dns_server }}.yml"
 
 - name: Apply a pending restart before checking the answers
   ansible.builtin.meta: flush_handlers
@@ -94,6 +23,9 @@
       - "{{ internal_dns_names | first }}.{{ internal_dns_domain }}"
   register: internal_dns_answer
   changed_when: false
+  until: internal_dns_answer.stdout_lines | length > 0
+  retries: 10
+  delay: 3
   failed_when: internal_dns_answer.stdout_lines | length == 0
 
 - name: Point the tailnet's split DNS at the bastions
