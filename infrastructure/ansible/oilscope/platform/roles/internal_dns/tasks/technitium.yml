@@ -24,7 +24,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart Docker
+  register: internal_dns_docker_config
 
 - name: Read the facts Docker's installation needs
   ansible.builtin.setup:
@@ -40,8 +40,15 @@
   vars:
     docker_engine_group_members: []
 
-- name: Apply the firewall setting to a Docker that was already running
-  ansible.builtin.meta: flush_handlers
+# Not a handler: docker_engine flushes handlers on its own, before Docker
+# exists. A fresh install already started with the setting; restarting it
+# once more is harmless.
+- name: Apply the firewall setting to a Docker that was already running  # noqa: no-handler
+  become: true
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+  when: internal_dns_docker_config is changed
 
 # CoreDNS, from before, holds the same address and port.
 - name: Stop CoreDNS if an earlier run installed it
