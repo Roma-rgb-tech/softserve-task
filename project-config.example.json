@@ -279,7 +279,7 @@
     "tls_sans": []
   },
   "kubernetes": {
-    "managed": false,
+    "managed": true,
     "node_count": 3,
     "node_size": "medium"
   },
