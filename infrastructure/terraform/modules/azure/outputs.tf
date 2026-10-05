@@ -36,3 +36,8 @@ output "database" {
     fqdn        = module.database.fqdn
   }
 }
+
+output "kubernetes" {
+  description = "The managed cluster in this cloud, or null when there is none."
+  value       = module.kubernetes.cluster
+}

@@ -87,3 +87,8 @@ output "azure_key_vault" {
   description = "Key Vault that holds the Azure secrets. Null when Azure is not in use."
   value       = module.azure.key_vault_name
 }
+
+output "kubernetes" {
+  description = "The managed Kubernetes cluster - cloud, name, location and the kubeconfig context Ansible gives it. Null while the cluster is k3s on the VMs."
+  value       = try(coalesce(module.gcp.kubernetes, module.aws.kubernetes, module.azure.kubernetes), null)
+}

@@ -23,3 +23,8 @@ output "monitoring" {
     delivery  = length(module.monitoring.notification_channels) > 0 ? "email notification channels" : null
   }
 }
+
+output "kubernetes" {
+  description = "The managed cluster in this cloud, or null when there is none."
+  value       = module.kubernetes.cluster
+}

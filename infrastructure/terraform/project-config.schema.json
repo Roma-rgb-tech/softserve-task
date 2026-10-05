@@ -684,6 +684,94 @@
         }
       }
     },
+    "kubernetes": {
+      "description": "Where Kubernetes comes from. managed false (or no block) builds k3s on the k3s_server and k3s_agent VMs. managed true asks the cloud for a managed cluster instead - GKE, EKS or AKS - and Terraform skips those VMs; their secret_mappings and public_endpoint stay where they are and describe the cluster.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "managed"
+      ],
+      "properties": {
+        "managed": {
+          "description": "True creates a managed cluster and skips the k3s VMs.",
+          "type": "boolean"
+        },
+        "cloud": {
+          "description": "Cloud that hosts the managed cluster. Defaults to default_cloud. The bastion must be in the same cloud: it routes the tailnet to the cluster's internal load balancer.",
+          "$ref": "#/$defs/cloud"
+        },
+        "version": {
+          "description": "Kubernetes minor version, such as 1.33. Defaults to what the provider currently recommends.",
+          "type": "string",
+          "pattern": "^1\\.[0-9]+$"
+        },
+        "node_count": {
+          "description": "Worker nodes in the single node pool.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3
+        },
+        "node_size": {
+          "description": "Portable size of each node, resolved through catalog.size.",
+          "$ref": "#/$defs/size"
+        },
+        "node_disk_gb": {
+          "description": "Boot disk of each node.",
+          "type": "integer",
+          "minimum": 20,
+          "default": 30
+        },
+        "node_subnet_cidr": {
+          "description": "Subnet the nodes are placed in. Defaults to the third /24 of the cloud's vpc_cidr. On AWS a second subnet, the fourth /24, is added in another zone because EKS asks for two.",
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+            }
+          ]
+        },
+        "pod_cidr": {
+          "description": "Pod range on GKE (a secondary range of the node subnet) and on AKS (the overlay). EKS gives pods addresses from the node subnet instead.",
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+            }
+          ],
+          "default": "10.40.0.0/16"
+        },
+        "service_cidr": {
+          "description": "Service ClusterIP range.",
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+            }
+          ],
+          "default": "10.41.0.0/20"
+        },
+        "control_plane_cidr": {
+          "description": "GKE only: the /28 the private control plane is peered from.",
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+            }
+          ],
+          "default": "172.16.0.0/28"
+        },
+        "api_allowed_cidrs": {
+          "description": "Addresses allowed to reach the public API endpoint, where Ansible and kubectl run. Defaults to the allowed_cidrs of every bastion.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+          }
+        }
+      }
+    },
     "cluster": {
       "description": "What runs inside the cluster, beyond the application images in registry.",
       "type": "object",

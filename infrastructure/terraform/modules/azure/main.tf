@@ -1,13 +1,13 @@
 module "network" {
   source = "./network"
 
-  config = var.config
+  config = local.host_config
 }
 
 module "routing" {
   source = "./routing"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   subnets             = module.network.subnets
@@ -16,7 +16,7 @@ module "routing" {
 module "firewall" {
   source = "./firewall"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   subnets             = module.network.subnets
@@ -25,7 +25,7 @@ module "firewall" {
 module "iam" {
   source = "./iam"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
 }
@@ -33,7 +33,7 @@ module "iam" {
 module "addresses" {
   source = "./addresses"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
 }
@@ -41,7 +41,7 @@ module "addresses" {
 module "vm" {
   source = "./vm"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   subnets             = module.network.subnets
@@ -58,7 +58,8 @@ module "vm" {
 module "secrets" {
   source = "./secrets"
 
-  config              = var.config
+  config              = local.host_config
+  cluster_secret_ids  = local.cluster_secret_ids
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   principal_ids       = module.iam.principal_ids
@@ -67,7 +68,7 @@ module "secrets" {
 module "monitoring" {
   source = "./monitoring"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   resource_group_id   = module.network.resource_group_id
   location            = module.network.location
@@ -78,7 +79,7 @@ module "monitoring" {
 module "database" {
   source = "./database"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   virtual_network_id  = module.network.virtual_network_id
@@ -89,9 +90,19 @@ module "database" {
 module "tailnet" {
   source = "./tailnet"
 
-  config              = var.config
+  config              = local.host_config
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   subnets             = module.network.subnets
   next_hop            = module.vm.bastion_private_ip
+}
+
+module "kubernetes" {
+  source = "./kubernetes"
+
+  config               = var.config
+  resource_group_name  = module.network.resource_group_name
+  location             = module.network.location
+  virtual_network_name = module.network.virtual_network_name
+  virtual_network_id   = module.network.virtual_network_id
 }

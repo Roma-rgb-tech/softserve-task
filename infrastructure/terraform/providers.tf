@@ -13,7 +13,7 @@ provider "google" {
 locals {
   aws_in_use = anytrue([
     for vm in values(local.config.vms) : lookup(vm, "cloud", lookup(local.config, "default_cloud", "")) == "aws"
-  ])
+  ]) || (lookup(lookup(local.config, "kubernetes", {}), "managed", false) && lookup(lookup(local.config, "kubernetes", {}), "cloud", lookup(local.config, "default_cloud", "")) == "aws")
 }
 
 provider "aws" {

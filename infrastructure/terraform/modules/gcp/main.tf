@@ -1,13 +1,13 @@
 module "network" {
   source = "./network"
 
-  config = var.config
+  config = local.host_config
 }
 
 module "routing" {
   source = "./routing"
 
-  config             = var.config
+  config             = local.host_config
   network_id         = module.network.network_id
   workload_subnet_id = module.network.workload_subnet_id
 }
@@ -15,26 +15,26 @@ module "routing" {
 module "firewall" {
   source = "./firewall"
 
-  config     = var.config
+  config     = local.host_config
   network_id = module.network.network_id
 }
 
 module "addresses" {
   source = "./addresses"
 
-  config = var.config
+  config = local.host_config
 }
 
 module "iam" {
   source = "./iam"
 
-  config = var.config
+  config = local.host_config
 }
 
 module "vm" {
   source = "./vm"
 
-  config             = var.config
+  config             = local.host_config
   subnets            = module.network.subnets
   runtime_identities = module.iam.runtime_identities
   public_ips         = module.addresses.public_ips
@@ -43,20 +43,21 @@ module "vm" {
 module "secrets" {
   source = "./secrets"
 
-  config             = var.config
+  config             = local.host_config
+  cluster_secret_ids = local.cluster_secret_ids
   runtime_identities = module.iam.runtime_identities
 }
 
 module "monitoring" {
   source = "./monitoring"
 
-  config = var.config
+  config = local.host_config
 }
 
 module "database" {
   source = "./database"
 
-  config     = var.config
+  config     = local.host_config
   network_id = module.network.network_id
   subnet_id  = module.network.database_subnet_id
 }
@@ -64,7 +65,14 @@ module "database" {
 module "tailnet" {
   source = "./tailnet"
 
-  config     = var.config
+  config     = local.host_config
   network_id = module.network.network_id
   next_hop   = module.vm.bastion_instance
+}
+
+module "kubernetes" {
+  source = "./kubernetes"
+
+  config     = var.config
+  network_id = module.network.network_id
 }

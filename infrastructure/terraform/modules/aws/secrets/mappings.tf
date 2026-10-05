@@ -5,6 +5,9 @@ locals {
     && vm.role != "bastion" && length(vm.secret_mappings) > 0
   }
 
-  secret_ids = distinct(flatten([for name, vm in local.readers : values(vm.secret_mappings)]))
-  managers   = lookup(lookup(var.config, "aws", {}), "secret_version_managers", [])
+  secret_ids = distinct(concat(
+    flatten([for name, vm in local.readers : values(vm.secret_mappings)]),
+    var.cluster_secret_ids,
+  ))
+  managers = lookup(lookup(var.config, "aws", {}), "secret_version_managers", [])
 }

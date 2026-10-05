@@ -23,3 +23,8 @@ output "monitoring" {
     delivery  = module.monitoring.alert_topic_arn
   }
 }
+
+output "kubernetes" {
+  description = "The managed cluster in this cloud, or null when there is none."
+  value       = module.kubernetes.cluster
+}
