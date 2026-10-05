@@ -278,6 +278,11 @@
     "version": "v1.33.4+k3s1",
     "tls_sans": []
   },
+  "kubernetes": {
+    "managed": false,
+    "node_count": 3,
+    "node_size": "medium"
+  },
   "cluster": {
     "namespace": "oilscope",
     "internal_domain": "oilscope.internal",

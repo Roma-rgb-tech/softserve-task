@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The token rides in a header, so every call is no_log; what went wrong is
+# reported from the status code alone.
+- name: Refuse to run without a Cloudflare token
+  ansible.builtin.fail:
+    msg: >-
+      managed_kubernetes_cloudflare_token is empty. The public record is
+      written with CF_DNS_API_TOKEN from the secret_mappings of the k3s_server
+      entry, the same token cert-manager uses.
+  when: managed_kubernetes_cloudflare_token | length == 0
+
+- name: Work out the record
+  ansible.builtin.set_fact:
+    managed_kubernetes_record:
+      type: "{{ 'A' if managed_kubernetes_public_address is match('^[0-9.]+$') else 'CNAME' }}"
+      name: "{{ managed_kubernetes_endpoint.hostname }}"
+      content: "{{ managed_kubernetes_public_address }}"
+      ttl: 1
+      proxied: false
+      comment: "Managed by Ansible for the {{ managed_kubernetes_name }} load balancer"
+    managed_kubernetes_records_url: >-
+      {{ managed_kubernetes_cloudflare_api }}/zones/{{ managed_kubernetes_endpoint.cloudflare_zone_id }}/dns_records
+
+- name: Look up what the hostname points at now
+  ansible.builtin.uri:
+    url: "{{ managed_kubernetes_records_url }}?name={{ managed_kubernetes_record.name | urlencode }}"
+    headers:
+      Authorization: "Bearer {{ managed_kubernetes_cloudflare_token }}"
+    return_content: true
+  register: managed_kubernetes_existing
+  no_log: true
+
+# An address record can only be replaced by a record of another type, never
+# changed into one, so anything that is not already the wanted record goes.
+- name: Remove a record that points elsewhere
+  ansible.builtin.uri:
+    url: "{{ managed_kubernetes_records_url }}/{{ item.id }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ managed_kubernetes_cloudflare_token }}"
+  loop: >-
+    {{ managed_kubernetes_existing.json.result | default([])
+       | selectattr('type', 'in', ['A', 'AAAA', 'CNAME'])
+       | rejectattr('content', 'equalto', managed_kubernetes_record.content)
+       | list }}
+  loop_control:
+    label: "{{ item.type }} {{ item.content }}"
+  changed_when: true
+  no_log: true
+
+- name: Create the record
+  ansible.builtin.uri:
+    url: "{{ managed_kubernetes_records_url }}"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ managed_kubernetes_cloudflare_token }}"
+    body_format: json
+    body: "{{ managed_kubernetes_record }}"
+  register: managed_kubernetes_created
+  changed_when: true
+  no_log: true
+  when: >-
+    managed_kubernetes_existing.json.result | default([])
+    | selectattr('type', 'equalto', managed_kubernetes_record.type)
+    | selectattr('content', 'equalto', managed_kubernetes_record.content)
+    | list | length == 0

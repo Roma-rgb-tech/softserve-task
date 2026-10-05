@@ -9,7 +9,8 @@
     msg: >-
       cluster_platform_cloudflare_token is empty. cert-manager proves the
       public hostname through Cloudflare's API, so map CF_DNS_API_TOKEN in the
-      secret_mappings of the first k3s server.
+      secret_mappings of the first k3s server (kept in the configuration for
+      a managed cluster too).
   when: cluster_platform_cloudflare_token | length == 0
 
 - name: Refuse to run without an ACME account email
@@ -36,8 +37,21 @@
     chart_version: "{{ cluster_platform_charts.traefik.version }}"
     release_namespace: "{{ cluster_platform_charts.traefik.namespace }}"
     create_namespace: true
-    values_files:
-      - "{{ role_path }}/files/values/traefik.yaml"
+    values_files: >-
+      {{ [role_path ~ '/files/values/traefik.yaml']
+         + ([role_path ~ '/files/values/traefik-managed.yaml']
+            if cluster_platform_managed | bool else []) }}
+    values: >-
+      {{ {
+           'service': {
+             'annotations': cluster_platform_traefik_annotations[cluster_platform_cloud].public,
+             'additionalServices': {
+               'internal': {
+                 'annotations': cluster_platform_traefik_annotations[cluster_platform_cloud].internal
+               }
+             }
+           }
+         } if cluster_platform_managed | bool else {} }}
     wait: true
 
 - name: Install cert-manager
@@ -114,6 +128,13 @@
         ingress:
           hosts:
             - "prometheus.{{ cluster_platform_internal_domain }}"
+        prometheusSpec:
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                resources:
+                  requests:
+                    storage: "{{ cluster_platform_prometheus_storage }}"
       grafana:
         ingress:
           hosts:

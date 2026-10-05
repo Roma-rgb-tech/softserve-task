@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# Laid over traefik.yaml on a managed cluster (GKE, EKS, AKS), where the cloud
+# provides load balancers and the nodes have no public addresses to bind.
+#
+# Two Services, both of type LoadBalancer:
+#   traefik           internet-facing; the public DNS record points at it
+#   traefik-internal  a private address in the cluster's network, which the
+#                     tailnet reaches through the bastion; the operator
+#                     pages' names point at it
+# The cloud-specific annotations that make one public and one internal are
+# added by the role, per cloud.
+#
+# externalTrafficPolicy Local keeps the visitor's own address: the load
+# balancer sends traffic only to nodes running Traefik, and the node does not
+# masquerade it. Without it every request would arrive from a node address,
+# which is private, and the internal-only allow list would let the internet in.
+# The DaemonSet puts Traefik on every node, so every node passes the health
+# check.
+ports:
+  web:
+    hostPort: null
+    expose:
+      default: true
+      internal: true
+  websecure:
+    hostPort: null
+    expose:
+      default: true
+      internal: true
+
+service:
+  spec:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+  additionalServices:
+    internal:
+      spec:
+        type: LoadBalancer
+        externalTrafficPolicy: Local
+
+providers:
+  kubernetesIngress:
+    # Ingresses report the public load balancer's address.
+    publishedService:
+      enabled: true

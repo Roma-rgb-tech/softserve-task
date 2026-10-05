@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
 # Everything here runs on the controller. Helm and the Kubernetes modules reach
-# the cluster through this kubeconfig, which the k3s role wrote.
+# the cluster through this kubeconfig, which the k3s role or, for a managed
+# cluster, the managed_kubernetes role wrote.
 cluster_platform_kubeconfig: "{{ oilscope_kubeconfig }}"
 
 # One entry per chart. The version is a Helm constraint, so patch releases come
@@ -42,3 +43,31 @@ cluster_platform_grafana_password: ""
 
 cluster_platform_internal_domain: "{{ oilscope_internal_domain }}"
 cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"
+
+# k3s on the VMs, or a managed cluster from the cloud. On a managed one Traefik
+# sits behind the cloud's load balancers instead of on the nodes' host ports.
+cluster_platform_managed: "{{ oilscope_kubernetes_managed | bool }}"
+cluster_platform_cloud: "{{ oilscope_kubernetes_cloud }}"
+
+# Prometheus' volume. Persistent Disk on GKE starts at 10 GB.
+cluster_platform_prometheus_storage: >-
+  {{ '10Gi' if (cluster_platform_managed | bool and cluster_platform_cloud == 'gcp') else '5Gi' }}
+
+# What makes one of Traefik's two Services face the internet and the other
+# stay inside the network, per cloud. AWS gets Network Load Balancers, which
+# keep the visitor's address; its default Classic one would replace it.
+cluster_platform_traefik_annotations:
+  gcp:
+    public: {}
+    internal:
+      networking.gke.io/load-balancer-type: Internal
+  aws:
+    public:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    internal:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+  azure:
+    public: {}
+    internal:
+      service.beta.kubernetes.io/azure-load-balancer-internal: "true"

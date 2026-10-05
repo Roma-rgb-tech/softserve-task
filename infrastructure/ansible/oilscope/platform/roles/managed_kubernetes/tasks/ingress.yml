@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# Run after cluster_platform has installed Traefik: its two Services are
+# LoadBalancers, and the cloud gives each an address within a minute or two.
+# The public one gets the site's DNS record; the internal one is what the
+# bastion's CoreDNS answers for the operator pages.
+- name: Wait for the load balancers to get their addresses
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ managed_kubernetes_kubeconfig }}"
+    kind: Service
+    namespace: "{{ managed_kubernetes_ingress_namespace }}"
+    name: "{{ item }}"
+  register: managed_kubernetes_services
+  until: >-
+    (managed_kubernetes_services.resources | default([]) | length) > 0
+    and (managed_kubernetes_services.resources[0].status.loadBalancer.ingress | default([]) | length) > 0
+  retries: "{{ managed_kubernetes_wait_retries }}"
+  delay: "{{ managed_kubernetes_wait_delay }}"
+  loop:
+    - "{{ managed_kubernetes_public_service }}"
+    - "{{ managed_kubernetes_internal_service }}"
+
+# GKE and AKS hand out an IP address; an AWS Network Load Balancer a DNS name.
+- name: Read the addresses
+  ansible.builtin.set_fact:
+    managed_kubernetes_public_address: >-
+      {{ managed_kubernetes_services.results[0].resources[0].status.loadBalancer.ingress[0].ip
+         | default(managed_kubernetes_services.results[0].resources[0].status.loadBalancer.ingress[0].hostname) }}
+    managed_kubernetes_internal_address: >-
+      {{ managed_kubernetes_services.results[1].resources[0].status.loadBalancer.ingress[0].ip
+         | default(managed_kubernetes_services.results[1].resources[0].status.loadBalancer.ingress[0].hostname) }}
+
+- name: Point the public hostname at the load balancer
+  ansible.builtin.include_tasks: dns_record.yml
+  when:
+    - managed_kubernetes_endpoint.hostname | default('') | length > 0
+    - managed_kubernetes_endpoint.cloudflare_zone_id | default('') | length > 0
+
+- name: Say where the stand answers
+  ansible.builtin.debug:
+    msg:
+      - "Public: https://{{ managed_kubernetes_endpoint.hostname | default('-') }} -> {{ managed_kubernetes_public_address }}"
+      - "Internal (operator pages over the tailnet): {{ managed_kubernetes_internal_address }}"

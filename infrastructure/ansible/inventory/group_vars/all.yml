@@ -88,8 +88,10 @@ oilscope_database_sslmode: >-
      if (not oilscope_database_managed or oilscope_database_cloud == 'gcp')
      else 'require' }}
 
-# The k3s cluster. The controller keeps its own kubeconfig per stand, so Helm
-# and kubectl from this repository never touch the operator's other clusters.
+# The cluster. The controller keeps its own kubeconfig per stand, so Helm and
+# the Kubernetes modules never touch the operator's other clusters; the
+# kube_context role then also merges it into the default kubeconfig and makes
+# it the current context, for kubectl, kubectx and k9s.
 oilscope_kubeconfig: >-
   {{ lookup('ansible.builtin.env', 'OILSCOPE_KUBECONFIG')
      | default(lookup('ansible.builtin.env', 'HOME')
@@ -99,9 +101,31 @@ oilscope_cluster: "{{ oilscope_project_config.cluster | default({}) }}"
 oilscope_namespace: "{{ oilscope_cluster.namespace | default('oilscope') }}"
 oilscope_internal_domain: "{{ oilscope_cluster.internal_domain | default('oilscope.internal') }}"
 
-# The node whose secret_mappings hold every value the cluster needs. Its cloud
-# identity reads them, and the controller turns them into Kubernetes Secrets.
-oilscope_secrets_host: "{{ groups['k3s_server'] | default([]) | first | default('') }}"
+# Where the cluster comes from: k3s on the k3s_server and k3s_agent VMs, or,
+# with kubernetes.managed, GKE, EKS or AKS from the cloud. Terraform does not
+# build the k3s VMs then, but their entries stay in the configuration: their
+# secret_mappings and public_endpoint still describe what the cluster needs.
+oilscope_kubernetes: "{{ oilscope_project_config.kubernetes | default({}) }}"
+oilscope_kubernetes_managed: "{{ oilscope_kubernetes.managed | default(false) | bool }}"
+oilscope_kubernetes_cloud: >-
+  {{ oilscope_kubernetes.cloud | default(oilscope_project_config.default_cloud) }}
+
+# The configuration entry whose secret_mappings hold every value the cluster
+# needs.
+oilscope_secrets_vm: >-
+  {{ (oilscope_project_config.vms | dict2items
+      | selectattr('value.role', 'in', ['k3s_server', 'k3s_agent'])
+      | selectattr('value.secret_mappings', 'defined')
+      | rejectattr('value.secret_mappings', 'equalto', {})
+      | map(attribute='key') | list | first) | default('') }}
+
+# Who reads them. On k3s, the first server with its own cloud identity; on a
+# managed cluster there is no such VM, so the controller reads them with the
+# operator's credentials. Either way the controller turns them into
+# Kubernetes Secrets and none is written to disk.
+oilscope_secrets_host: >-
+  {{ 'localhost' if oilscope_kubernetes_managed | bool
+     else (groups['k3s_server'] | default([]) | first | default('')) }}
 
 # Every private range of the clouds in use. The operator-only pages answer only
 # to these: the tailnet subnet router masquerades the operator's device behind

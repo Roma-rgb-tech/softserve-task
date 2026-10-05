@@ -12,6 +12,18 @@ role is the read side used at deploy time: it turns `secret_mappings` into an
 in-memory mapping the workload's own role can use to configure the running
 containers.
 
+## From the controller, for a managed cluster
+
+With `kubernetes.managed` there is no node VM of ours to read the secrets on.
+`cluster.yml` then runs the role on `localhost` with
+`resolve_secrets_from_controller: true` and `resolve_secrets_vm` naming the
+`vms` entry (the first `k3s_server` with `secret_mappings`, which stays in the
+configuration). The same containers are read with the operator's own
+credentials - `gcloud secrets versions access`, `aws secretsmanager
+get-secret-value` or `az keyvault secret show` - and every guarantee below
+except the first two bullets still holds: nothing is written to disk and every
+value-carrying task is `no_log`.
+
 ## What it guarantees
 
 - Only the secrets listed in the current host's own `secret_mappings` are

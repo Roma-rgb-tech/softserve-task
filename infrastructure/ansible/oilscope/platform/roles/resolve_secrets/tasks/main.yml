@@ -5,21 +5,33 @@
     resolve_secrets_config: >-
       {{ lookup('ansible.builtin.file', resolve_secrets_config_path) | from_json }}
 
+# On a VM the entry is the host itself. From the controller, for a managed
+# cluster that replaced the VM, it is named explicitly.
+- name: Derive this VM's configuration key
+  ansible.builtin.set_fact:
+    resolve_secrets_vm_key: >-
+      {{ resolve_secrets_vm
+         if resolve_secrets_vm | length > 0
+         else inventory_hostname
+              | regex_replace('^' ~ (resolve_secrets_config.name_prefix
+                                      ~ '-' ~ resolve_secrets_config.environment
+                                      ~ '-') | regex_escape, '') }}
+
+- name: Work out which cloud holds the secrets
+  ansible.builtin.set_fact:
+    resolve_secrets_cloud: >-
+      {{ (resolve_secrets_config.vms[resolve_secrets_vm_key].cloud
+          | default(resolve_secrets_config.default_cloud))
+         if resolve_secrets_from_controller | bool
+         else oilscope_cloud }}
+
 - name: Resolve the target GCP project
   ansible.builtin.set_fact:
     resolve_secrets_project: >-
       {{ resolve_secrets_project_id
         | default(lookup('ansible.builtin.env', 'GOOGLE_PROJECT'), true)
         | default(resolve_secrets_config.gcp.project_id | default(''), true) }}
-  when: oilscope_cloud == 'gcp'
-
-- name: Derive this VM's configuration key
-  ansible.builtin.set_fact:
-    resolve_secrets_vm_key: >-
-      {{ inventory_hostname
-         | regex_replace('^' ~ (resolve_secrets_config.name_prefix
-                                 ~ '-' ~ resolve_secrets_config.environment
-                                 ~ '-') | regex_escape, '') }}
+  when: resolve_secrets_cloud == 'gcp'
 
 - name: Select the host's secret mappings
   ansible.builtin.set_fact:
@@ -28,8 +40,16 @@
          | default({}) }}
 
 - name: Resolve secrets with the provider this host runs on
-  ansible.builtin.include_tasks: "{{ oilscope_cloud }}.yml"
-  when: resolve_secrets_mappings | length > 0
+  ansible.builtin.include_tasks: "{{ resolve_secrets_cloud }}.yml"
+  when:
+    - resolve_secrets_mappings | length > 0
+    - not resolve_secrets_from_controller | bool
+
+- name: Resolve secrets from the controller with the operator's credentials
+  ansible.builtin.include_tasks: "controller_{{ resolve_secrets_cloud }}.yml"
+  when:
+    - resolve_secrets_mappings | length > 0
+    - resolve_secrets_from_controller | bool
 
 - name: Default to an empty result when there is nothing to resolve
   ansible.builtin.set_fact:

@@ -1,3 +1,13 @@
+# The Kubernetes Engine API is off in a new project. It stays on after a
+# destroy: turning it off would tear down anything else in the project using it.
+resource "google_project_service" "container" {
+  count = local.count
+
+  project            = local.project
+  service            = "container.googleapis.com"
+  disable_on_destroy = false
+}
+
 # A zonal cluster: the free tier covers its control plane, and the nodes are
 # what is paid for, the same e2 machines the k3s nodes were.
 resource "google_container_cluster" "main" {
@@ -53,7 +63,7 @@ resource "google_container_cluster" "main" {
 
   resource_labels = local.labels
 
-  depends_on = [google_compute_router_nat.nodes]
+  depends_on = [google_compute_router_nat.nodes, google_project_service.container]
 
   lifecycle {
     precondition {

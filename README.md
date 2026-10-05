@@ -383,6 +383,12 @@ Two honest caveats:
   `snapshot/vm-compose` tag.
   See [`docs/k3s-cluster.md`](docs/k3s-cluster.md).
 
+- **Or in GKE, EKS or AKS.** `kubernetes.managed` swaps the k3s VMs for the
+  cloud's managed cluster. Terraform creates it, Ansible fetches its
+  credentials, makes it the current kubectl context and deploys the same
+  platform and application into it, behind the cloud's load balancers.
+  See [`docs/managed-kubernetes.md`](docs/managed-kubernetes.md).
+
 - **Monitoring is the cloud's own.** CPU, memory, disk, availability, 5xx
   responses and spend are watched by Cloud Monitoring and CloudWatch, with the
   alerts mailed from the same configuration on both sides. Nothing self-hosted.

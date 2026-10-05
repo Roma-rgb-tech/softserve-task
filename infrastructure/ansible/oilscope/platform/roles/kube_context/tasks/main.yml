@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The same thing "kubectl config view --flatten" over both files and then
+# "kubectl config use-context" would do, without needing kubectl: the stand's
+# clusters, users and contexts replace any of the same name - a rebuilt
+# cluster keeps its name but not its certificate - everything else in the
+# file is kept, and the stand's context becomes the current one. The previous
+# file is kept next to it as a timestamped backup.
+- name: Read the stand's kubeconfig
+  ansible.builtin.slurp:
+    src: "{{ kube_context_source }}"
+  register: kube_context_source_file
+  no_log: true
+  when: kube_context_enabled | bool
+
+- name: Look for an existing default kubeconfig
+  ansible.builtin.stat:
+    path: "{{ kube_context_target }}"
+  register: kube_context_target_stat
+  when: kube_context_enabled | bool
+
+- name: Read the existing default kubeconfig
+  ansible.builtin.slurp:
+    src: "{{ kube_context_target }}"
+  register: kube_context_target_file
+  no_log: true
+  when:
+    - kube_context_enabled | bool
+    - kube_context_target_stat.stat.exists
+
+- name: Parse both
+  ansible.builtin.set_fact:
+    kube_context_new: "{{ kube_context_source_file.content | b64decode | from_yaml }}"
+    kube_context_old: >-
+      {{ (kube_context_target_file.content | b64decode | from_yaml | default({}, true))
+         if kube_context_target_stat.stat.exists else {} }}
+  no_log: true
+  when: kube_context_enabled | bool
+
+- name: Merge the two
+  ansible.builtin.set_fact:
+    kube_context_merged:
+      apiVersion: v1
+      kind: Config
+      preferences: "{{ kube_context_old.preferences | default({}, true) }}"
+      current-context: "{{ kube_context_new['current-context'] }}"
+      clusters: >-
+        {{ kube_context_new.clusters | default([], true)
+           + (kube_context_old.clusters | default([], true)
+              | rejectattr('name', 'in', kube_context_new.clusters | default([], true) | map(attribute='name') | list)
+              | list) }}
+      users: >-
+        {{ kube_context_new.users | default([], true)
+           + (kube_context_old.users | default([], true)
+              | rejectattr('name', 'in', kube_context_new.users | default([], true) | map(attribute='name') | list)
+              | list) }}
+      contexts: >-
+        {{ kube_context_new.contexts | default([], true)
+           + (kube_context_old.contexts | default([], true)
+              | rejectattr('name', 'in', kube_context_new.contexts | default([], true) | map(attribute='name') | list)
+              | list) }}
+  no_log: true
+  when: kube_context_enabled | bool
+
+- name: Create the directory for the default kubeconfig
+  ansible.builtin.file:
+    path: "{{ kube_context_target | dirname }}"
+    state: directory
+    mode: "0700"
+  when: kube_context_enabled | bool
+
+- name: Write the default kubeconfig with the stand's cluster as the current context
+  ansible.builtin.copy:
+    content: "{{ kube_context_merged | to_nice_yaml(indent=2) }}"
+    dest: "{{ kube_context_target }}"
+    mode: "0600"
+    backup: true
+  no_log: true
+  when: kube_context_enabled | bool
+
+- name: Say which context is now current
+  ansible.builtin.debug:
+    msg: >-
+      kubectl now talks to {{ kube_context_merged['current-context'] }}
+      ({{ kube_context_target }}). Switch back with kubectx or
+      "kubectl config use-context <name>".
+  when: kube_context_enabled | bool

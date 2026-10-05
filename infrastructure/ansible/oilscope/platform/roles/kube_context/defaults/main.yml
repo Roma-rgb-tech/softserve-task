@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The stand's own kubeconfig, written by the k3s or managed_kubernetes role.
+kube_context_source: "{{ oilscope_kubeconfig }}"
+
+# The operator's default kubeconfig, the one kubectl, kubectx and k9s read
+# when KUBECONFIG is not set. OILSCOPE_SET_CONTEXT=false leaves it alone.
+kube_context_target: "{{ lookup('ansible.builtin.env', 'HOME') ~ '/.kube/config' }}"
+kube_context_enabled: >-
+  {{ lookup('ansible.builtin.env', 'OILSCOPE_SET_CONTEXT') | default('true', true) | bool }}

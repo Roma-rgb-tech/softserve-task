@@ -21,6 +21,10 @@ the `snapshot/vm-compose` tag.
    operator ── tailnet ── bastion (subnet router)
 ```
 
+The same platform and application can also run on GKE, EKS or AKS instead of
+these VMs - one field, `kubernetes.managed`. See
+[managed-kubernetes.md](managed-kubernetes.md).
+
 ## What the configuration says
 
 Only the bastions and the nodes are in `vms`. A node's `role` is its place in

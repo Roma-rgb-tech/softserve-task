@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The operator's gcloud login reads the values; it holds secretAccessor through
+# the project role it already deploys with.
+- name: Access each mapped secret's latest version from the controller
+  ansible.builtin.command:
+    argv:
+      - "{{ resolve_secrets_gcloud }}"
+      - secrets
+      - versions
+      - access
+      - latest
+      - "--secret={{ item.value }}"
+      - "--project={{ resolve_secrets_project }}"
+  register: resolve_secrets_accessed
+  changed_when: false
+  check_mode: false
+  no_log: true
+  loop: "{{ resolve_secrets_mappings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Build the resolved secrets mapping
+  ansible.builtin.set_fact:
+    resolve_secrets_result: >-
+      {{ resolve_secrets_result | default({}) | combine({
+           item.item.key: item.stdout
+         }) }}
+  no_log: true
+  loop: "{{ resolve_secrets_accessed.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.key }}"

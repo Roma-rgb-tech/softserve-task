@@ -21,7 +21,9 @@
   ansible.builtin.assert:
     that:
       - cluster_app_endpoint.hostname | default('') | length > 0
-    fail_msg: Give one k3s node a public_endpoint with the hostname the site answers on.
+    fail_msg: >-
+      Give one k3s node a public_endpoint with the hostname the site answers
+      on. With a managed cluster the entry stays in vms for exactly this.
     quiet: true
 
 # The password lands in URLs, where several characters mean something else.

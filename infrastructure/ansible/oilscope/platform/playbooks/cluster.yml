@@ -1,19 +1,27 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The k3s cluster and everything in it. The nodes are found by the role label
-# Terraform put on them: k3s_server and k3s_agent become inventory groups.
+# The Kubernetes cluster and everything in it. Where the cluster comes from is
+# kubernetes.managed in the project configuration:
 #
-# Order matters. The first server initialises etcd, the others join it one at
-# a time so the quorum grows by one member at a time, and the agents come last.
-# Helm and the Kubernetes objects are applied from the controller, through the
-# kubeconfig the first server hands back.
-- name: Start the first k3s server
-  hosts: k3s_server[0]
-  become: true
-  gather_facts: true
-  any_errors_fatal: true
-
-  pre_tasks:
+#   false (or no kubernetes block)  k3s on the VMs Terraform labelled
+#                                   k3s_server and k3s_agent, which become
+#                                   inventory groups
+#   true                            GKE, EKS or AKS, which Terraform created
+#                                   in place of those VMs; this playbook only
+#                                   fetches its credentials
+#
+# From there on the two are the same: the controller's kubeconfig becomes the
+# operator's current context, and the same roles install the platform layer
+# and the application through it.
+#
+# Order matters for k3s. The first server initialises etcd, the others join it
+# one at a time so the quorum grows by one member at a time, and the agents
+# come last.
+- name: Check the stand before touching it
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
     - name: Refuse to run against a stand the inventory did not describe
       ansible.builtin.assert:
         that:
@@ -29,11 +37,22 @@
       vars:
         oilscope_inventory_config: >-
           {{ lookup('ansible.builtin.env', 'OILSCOPE_PROJECT_CONFIG') }}
-      become: false
-      delegate_to: localhost
 
+    - name: Say which cluster this run builds on
+      ansible.builtin.debug:
+        msg: >-
+          {{ ('Managed Kubernetes on ' ~ oilscope_kubernetes_cloud)
+             if oilscope_kubernetes_managed | bool
+             else 'k3s on the k3s_server and k3s_agent VMs' }}
+
+- name: Start the first k3s server
+  hosts: k3s_server[0]
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
   roles:
     - role: oilscope.platform.k3s
+      when: not oilscope_kubernetes_managed | bool
 
 - name: Join the other servers one at a time
   hosts: k3s_server[1:]
@@ -43,6 +62,7 @@
   any_errors_fatal: true
   roles:
     - role: oilscope.platform.k3s
+      when: not oilscope_kubernetes_managed | bool
 
 - name: Join the agents
   hosts: k3s_agent
@@ -51,17 +71,50 @@
   any_errors_fatal: true
   roles:
     - role: oilscope.platform.k3s
+      when: not oilscope_kubernetes_managed | bool
 
-# The first server's cloud identity may read the secrets mapped to it; the
-# values stay in memory and reach the cluster only as Kubernetes Secrets.
+- name: Fetch the managed cluster's credentials
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: oilscope.platform.managed_kubernetes
+      when: oilscope_kubernetes_managed | bool
+
+# kubectl, kubectx and k9s then reach the stand with no --kubeconfig, which is
+# also what Headlamp's desktop app and Lens pick up.
+- name: Make the stand's cluster the operator's current context
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: oilscope.platform.kube_context
+
+# The values the cluster needs come from the cloud secret store. On k3s the
+# first server's own cloud identity reads them; a managed cluster has no VM of
+# ours, so the controller reads them with the operator's credentials. Either
+# way they stay in memory and reach the cluster only as Kubernetes Secrets.
 - name: Read the values the cluster needs from the cloud secret store
   hosts: k3s_server[0]
   become: true
   gather_facts: false
   roles:
     - role: oilscope.platform.resolve_secrets
+      when: not oilscope_kubernetes_managed | bool
       vars:
         resolve_secrets_config_path: "{{ project_config_path }}"
+
+- name: Read the values the managed cluster needs, from the controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: oilscope.platform.resolve_secrets
+      when: oilscope_kubernetes_managed | bool
+      vars:
+        resolve_secrets_config_path: "{{ project_config_path }}"
+        resolve_secrets_from_controller: true
+        resolve_secrets_vm: "{{ oilscope_secrets_vm }}"
 
 - name: Install the platform layer and the application
   hosts: localhost
@@ -79,3 +132,62 @@
     - role: oilscope.platform.cluster_app
       vars:
         cluster_app_secrets: "{{ oilscope_secrets }}"
+
+# On k3s, Terraform points the public name at a node and the bastion's CoreDNS
+# at the nodes' private addresses. A managed cluster's load balancers get
+# their addresses only now, so both names are pointed at them here.
+- name: Point the names at the managed cluster's load balancers
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Point the public and internal names at the load balancers
+      ansible.builtin.include_role:
+        name: oilscope.platform.managed_kubernetes
+        tasks_from: ingress
+      vars:
+        managed_kubernetes_cloudflare_token: >-
+          {{ (hostvars[oilscope_secrets_host].resolve_secrets_result | default({})).CF_DNS_API_TOKEN | default('') }}
+      when: oilscope_kubernetes_managed | bool
+
+- name: Answer for the operator pages' names with the internal load balancer
+  hosts: bastion
+  gather_facts: false
+  vars:
+    oilscope_tailnet: >-
+      {{ (lookup('ansible.builtin.file', project_config_path) | from_json).tailscale is defined }}
+    oilscope_internal_lb: "{{ hostvars['localhost'].managed_kubernetes_internal_address | default('') }}"
+  tasks:
+    # An AWS load balancer has a name rather than an address. The bastion,
+    # inside the same network, resolves it to the private addresses CoreDNS
+    # can hand out.
+    - name: Resolve the internal load balancer's name
+      ansible.builtin.command:
+        argv:
+          - getent
+          - ahostsv4
+          - "{{ oilscope_internal_lb }}"
+      register: oilscope_internal_lb_lookup
+      changed_when: false
+      until: oilscope_internal_lb_lookup.rc == 0
+      retries: 30
+      delay: 10
+      when:
+        - oilscope_kubernetes_managed | bool
+        - oilscope_tailnet | bool
+        - oilscope_internal_lb | length > 0
+        - oilscope_internal_lb is not match('^[0-9.]+$')
+
+    - name: Point the operator pages at the internal load balancer
+      ansible.builtin.include_role:
+        name: oilscope.platform.internal_dns
+      vars:
+        internal_dns_addresses: >-
+          {{ [oilscope_internal_lb]
+             if oilscope_internal_lb is match('^[0-9.]+$')
+             else (oilscope_internal_lb_lookup.stdout_lines
+                   | map('split') | map('first') | unique | list) }}
+      when:
+        - oilscope_kubernetes_managed | bool
+        - oilscope_tailnet | bool
+        - oilscope_internal_lb | length > 0

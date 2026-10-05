@@ -3,6 +3,15 @@
 resolve_secrets_config_path: ""
 resolve_secrets_project_id: ""
 
+# Read the secrets from the controller, with the operator's own cloud
+# credentials, instead of from the VM's identity. For a managed cluster, which
+# has no VM of ours to read them on. resolve_secrets_vm then names the
+# configuration entry whose secret_mappings to read.
+resolve_secrets_from_controller: false
+resolve_secrets_vm: ""
+resolve_secrets_gcloud: gcloud
+resolve_secrets_aws: aws
+
 resolve_secrets_metadata_url: >-
   http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token
 resolve_secrets_secretmanager_url: https://secretmanager.googleapis.com/v1

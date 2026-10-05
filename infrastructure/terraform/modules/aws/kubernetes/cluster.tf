@@ -103,3 +103,14 @@ resource "aws_eks_addon" "ebs_csi" {
     aws_iam_role_policy_attachment.ebs_csi,
   ]
 }
+
+# k3s, GKE and AKS ship metrics-server; EKS offers it as an add-on. Homepage's
+# CPU and memory per node, and kubectl top, read it.
+resource "aws_eks_addon" "metrics_server" {
+  count = local.count
+
+  cluster_name = aws_eks_cluster.main[0].name
+  addon_name   = "metrics-server"
+
+  depends_on = [aws_eks_node_group.main]
+}

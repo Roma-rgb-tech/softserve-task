@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The cluster exists once terraform apply has finished; this only fetches its
+# credentials into the stand's own kubeconfig, the file Helm and the
+# Kubernetes modules use, and waits for its nodes.
+- name: Refuse a cloud this role cannot reach
+  ansible.builtin.assert:
+    that:
+      - managed_kubernetes_cloud in managed_kubernetes_kinds
+    fail_msg: >-
+      kubernetes.cloud is {{ managed_kubernetes_cloud }}; a managed cluster
+      can be on gcp (GKE), aws (EKS) or azure (AKS).
+    quiet: true
+
+- name: Create the directory for the kubeconfig
+  ansible.builtin.file:
+    path: "{{ managed_kubernetes_kubeconfig | dirname }}"
+    state: directory
+    mode: "0700"
+
+- name: Fetch the cluster credentials
+  ansible.builtin.include_tasks: "credentials_{{ managed_kubernetes_cloud }}.yml"
+
+- name: Keep the kubeconfig readable by the operator only
+  ansible.builtin.file:
+    path: "{{ managed_kubernetes_kubeconfig }}"
+    mode: "0600"
+
+- name: Wait for every node to be Ready
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ managed_kubernetes_kubeconfig }}"
+    kind: Node
+  register: managed_kubernetes_nodes
+  until: >-
+    (managed_kubernetes_nodes.resources | default([])
+     | map(attribute='status.conditions') | map('selectattr', 'type', 'equalto', 'Ready')
+     | map('selectattr', 'status', 'equalto', 'True') | map('list') | select | list | length)
+    >= (managed_kubernetes_node_count | int)
+  retries: "{{ managed_kubernetes_wait_retries }}"
+  delay: "{{ managed_kubernetes_wait_delay }}"
+
+# EKS has had no default StorageClass since 1.30, and the gp2 one it still
+# ships uses the retired in-tree driver. CloudNativePG and Prometheus claim
+# volumes without naming a class, so gp3 through the EBS CSI driver becomes
+# the default. GKE (standard-rwo) and AKS (managed-csi) already have one.
+- name: Give EKS a default StorageClass
+  kubernetes.core.k8s:
+    kubeconfig: "{{ managed_kubernetes_kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: gp3
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+      provisioner: ebs.csi.aws.com
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      reclaimPolicy: Delete
+      parameters:
+        type: gp3
+        encrypted: "true"
+  when: managed_kubernetes_cloud == 'aws'
+
+- name: Say which cluster the stand now runs on
+  ansible.builtin.debug:
+    msg: >-
+      {{ managed_kubernetes_name }} ({{ managed_kubernetes_kinds[managed_kubernetes_cloud] | upper }}),
+      {{ managed_kubernetes_nodes.resources | length }} nodes Ready,
+      kubeconfig {{ managed_kubernetes_kubeconfig }}
