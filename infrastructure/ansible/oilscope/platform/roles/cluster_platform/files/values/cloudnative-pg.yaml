@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The operator alone. The PostgreSQL cluster itself is a Cluster resource the
-# application role creates in the application's namespace.
 replicaCount: 1
 
 resources:

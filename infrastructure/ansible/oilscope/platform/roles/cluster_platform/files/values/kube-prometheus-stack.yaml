@@ -1,13 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Prometheus, its operator, node-exporter, kube-state-metrics and Grafana.
-# Alerts stay with the clouds' own monitoring for now, so Alertmanager is off.
 alertmanager:
   enabled: false
 
-# k3s runs the scheduler, the controller manager and the proxy inside the k3s
-# process and keeps their metrics on localhost, so the default scrape targets
-# would only ever show as down. Their rules go with them.
 kubeControllerManager:
   enabled: false
 kubeScheduler:
@@ -36,13 +31,9 @@ prometheus:
     paths:
       - /
   prometheusSpec:
-    # Pick up every ServiceMonitor and PodMonitor in the cluster, not only the
-    # ones this release created.
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
-    # The nodes have 4 GB each. A few days of history is enough to see what
-    # happened and keeps Prometheus's memory and disk in check.
     retention: 3d
     retentionSize: 4GB
     resources:

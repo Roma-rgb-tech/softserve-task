@@ -104,10 +104,6 @@
          | list }}
   when: secret_versions_unavailable | length > 0
 
-# A value in the environment is written only when it differs from what the
-# container already serves. Writing the same value again adds a version and
-# reports a change on every run, although nothing the workloads read moved.
-# A container that cannot be read is written, as before.
 - name: Read the value each supplied container serves
   ansible.builtin.command:
     argv:

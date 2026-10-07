@@ -7,8 +7,6 @@ bastion_ssh_port: >-
   {{ (lookup('ansible.builtin.file', project_config_path) | from_json)
      .vms[bastion_config_key].ssh_port | int }}
 
-# An escape hatch, not a routine step: bootstrap_bastion.yml works out on its
-# own whether the host has been moved off the image default port yet.
 bastion_connect_override: >-
   {{ lookup('ansible.builtin.env', 'OILSCOPE_BASTION_CONNECT_PORT') }}
 

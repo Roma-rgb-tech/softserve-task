@@ -21,8 +21,6 @@
       or gcp.project_id in the project configuration.
   when: secret_versions_project | length == 0
 
-# secretVersionAdder allows adding a version without reading the metadata, so a
-# permission error is not proof that the container is missing.
 - name: Look for the containers
   ansible.builtin.command:
     argv:
@@ -40,10 +38,6 @@
   failed_when: false
   check_mode: false
 
-# Every container nobody supplied a value for is asked what it already holds.
-# A container that is already filled is left alone whether the value was
-# generated or uploaded: re-running the deployment is not a reason to rotate a
-# credential the running services are using.
 - name: Look for values the containers already hold
   ansible.builtin.command:
     argv:
@@ -78,10 +72,6 @@
   loop_control:
     label: "{{ item.item.secret_id }}"
 
-# Nothing has been written yet, and this is the last moment that is still true.
-# A container with no value in the environment, nothing stored, and no place on
-# the generated list has no value available from anywhere - and a run that
-# discovers that halfway through leaves some workloads rotated and some not.
 - name: Refuse to upload incomplete secret versions
   ansible.builtin.fail:
     msg: >-
@@ -98,10 +88,6 @@
          | list }}
   when: secret_versions_unavailable | length > 0
 
-# A value in the environment is written only when it differs from what the
-# container already serves. Writing the same value again adds a version and
-# reports a change on every run, although nothing the workloads read moved.
-# A container that cannot be read is written, as before.
 - name: Read the value each supplied container serves
   ansible.builtin.command:
     argv:
@@ -149,10 +135,6 @@
     msg: "{{ item }} already holds a value in gcp, leaving it alone"
   loop: "{{ secret_versions_present + (secret_versions_unchanged | default([])) }}"
 
-# --data-file=- takes the payload from stdin, so it never becomes a command
-# argument and cannot appear in ps output or a shell history. no_log keeps it
-# out of the Ansible output and any callback log, and stdin_add_newline is off
-# because a trailing newline would become part of the stored value.
 - name: Add a new version to every container
   ansible.builtin.command:
     argv:
@@ -174,8 +156,6 @@
   register: secret_versions_added
   changed_when: true
   no_log: true
-  # Not check_mode - a skipped-in-check-mode result carries the module
-  # arguments, and at -vvv Ansible prints those uncensored even under no_log.
   when: not ansible_check_mode
 
 - name: Report the new versions

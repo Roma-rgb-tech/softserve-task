@@ -8,9 +8,6 @@ metadata:
   name: {{ ns }}
 ---
 {% set page %}
-# The whole page is this ConfigMap. Each service gets a link and a status light:
-# siteMonitor asks the service's own health endpoint from inside the cluster,
-# green when it answers, red when it does not.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -88,8 +85,6 @@ metadata:
   name: homepage
   namespace: {{ ns }}
 ---
-# Enough to draw the cluster and node widgets: node and pod metrics, nothing
-# that can change anything.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -135,7 +130,6 @@ spec:
       labels:
         app.kubernetes.io/name: homepage
       annotations:
-        # A changed page restarts the pod, which reads the files only at start.
         checksum/config: "{{ page | hash('sha1') }}"
     spec:
       serviceAccountName: homepage
@@ -150,14 +144,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            # The pod address is what the kubelet's probe sends as Host.
             - name: HOMEPAGE_ALLOWED_HOSTS
               value: "$(MY_POD_IP):3000,{{ host }}"
-          # One file per mount, with the logs on an emptyDir of their own. The
-          # list must cover every file of the release's src/skeleton: for a
-          # missing one Homepage tries to copy the skeleton into /app/config,
-          # which this user cannot write, and exits - the page then shows the
-          # skeleton it was built with and every widget says API Error.
           volumeMounts:
 {% for file in ['settings.yaml', 'services.yaml', 'widgets.yaml', 'kubernetes.yaml', 'bookmarks.yaml', 'docker.yaml', 'proxmox.yaml', 'custom.css', 'custom.js'] %}
             - name: config
@@ -166,9 +154,6 @@ spec:
 {% endfor %}
             - name: logs
               mountPath: /app/config/logs
-          # Next.js builds the first page on demand, which takes a while on a
-          # shared node; the startup probe waits for that instead of the
-          # liveness probe killing the container halfway through it.
           startupProbe:
             httpGet:
               path: /api/healthcheck

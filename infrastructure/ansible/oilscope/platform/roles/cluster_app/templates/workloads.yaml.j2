@@ -3,7 +3,6 @@
   One replica of each service for now: the fetcher schedules its own fetches
   and would repeat them from every replica, and the services have not been
   adapted to share work yet.
-#}
 {% set image = cluster_app_repository ~ '/%s:' ~ cluster_app_image_tag %}
 {% set services = [
   {'name': 'history', 'port': 8001, 'metrics_port': 9100, 'url_key': 'HISTORY_DATABASE_URL',
@@ -127,8 +126,6 @@ spec:
     scheme: https
     permanent: true
 ---
-# cert-manager sees the annotation, proves the hostname over DNS-01 and keeps
-# the certificate in oilscope-tls; Traefik serves it on every node.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

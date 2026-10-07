@@ -5,8 +5,6 @@ kind: Namespace
 metadata:
   name: {{ cluster_platform_charts.headlamp.namespace }}
 ---
-# Traefik binds the host ports itself, so visitors from the internet keep
-# their own address; the operator arrives from the bastion's private address.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -16,8 +14,6 @@ spec:
   ipAllowList:
     sourceRange: {{ cluster_platform_private_ranges | to_json }}
 ---
-# Read access to every resource, Secrets included, so the dashboard shows the
-# whole cluster. Changing anything still goes through kubectl and Ansible.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -48,8 +44,6 @@ subjects:
     name: headlamp-operator
     namespace: {{ cluster_platform_charts.headlamp.namespace }}
 ---
-# A long-lived token for the sign-in page. Delete the Secret to revoke it; the
-# next run makes a new one.
 apiVersion: v1
 kind: Secret
 metadata:

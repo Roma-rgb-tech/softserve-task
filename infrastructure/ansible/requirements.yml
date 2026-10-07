@@ -5,20 +5,14 @@
 #
 #   ansible-galaxy collection install -r infrastructure/ansible/requirements.yml
 collections:
-  # Provides the gcp_compute inventory plugin the oilscope inventory delegates
-  # to for VMs in GCP.
   - name: google.cloud
     version: ">=1.14.0"
 
-  # Provides the aws_ec2 inventory plugin the oilscope inventory delegates to
-  # for VMs in AWS.
   - name: amazon.aws
     version: ">=9.0.0"
 
   - name: azure.azcollection
     version: ">=3.0.0"
 
-  # Helm releases and Kubernetes objects, applied from the controller against
-  # the k3s cluster.
   - name: kubernetes.core
     version: ">=5.0.0"

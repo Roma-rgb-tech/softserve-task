@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# One Redis without replicas: it holds UI sessions, which nobody misses after a
-# restart. The password comes from the Secret the role creates first.
 architecture: standalone
 
 auth:

@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The shared layer every application on the cluster relies on: the ingress
-# controller, certificates, the PostgreSQL operator and a dashboard. Each is a
-# Helm release installed from the controller with a short values file of its
-# own; only what differs from the chart's defaults is written down.
 - name: Refuse to run without a Cloudflare token for the DNS-01 challenge
   ansible.builtin.fail:
     msg: >-
@@ -79,8 +75,6 @@
         name: cloudflare-api-token
         namespace: "{{ cluster_platform_charts.cert_manager.namespace }}"
       type: Opaque
-      # Encoded under data, which is what the API server stores, so an
-      # unchanged token reports no change.
       data:
         api-token: "{{ cluster_platform_cloudflare_token | b64encode }}"
   no_log: true
@@ -111,9 +105,6 @@
     template: monitoring-access.yaml.j2
   no_log: true
 
-# Prometheus finds what to scrape through ServiceMonitor and PodMonitor
-# resources, which every other release and the application role add for
-# themselves; this one only brings the machinery and Grafana.
 - name: Install Prometheus and Grafana
   kubernetes.core.helm:
     kubeconfig: "{{ cluster_platform_kubeconfig }}"

@@ -137,8 +137,6 @@
         devices:
           create:
             reusable: false
-            # An ephemeral device leaves the tailnet on its own soon after its
-            # VM is destroyed, instead of lingering in the device list forever.
             ephemeral: "{{ tailnet_settings.ephemeral | default(true) | bool }}"
             preauthorized: true
     status_code: 200

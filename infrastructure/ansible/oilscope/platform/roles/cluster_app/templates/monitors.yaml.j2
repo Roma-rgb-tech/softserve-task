@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Every OilScope service that exports metrics. History and the UI serve them on
-# a port of their own; the fetcher, which is never published, on its API port.
-# Prometheus labels every sample with the Service it came through (service),
-# which is what the dashboard groups by.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -33,8 +29,6 @@ spec:
       path: /metrics
       interval: 30s
 ---
-# Every PostgreSQL instance exports on 9187. A PodMonitor rather than the
-# metrics Service, so a replica and the primary stay apart.
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
@@ -47,8 +41,6 @@ spec:
   podMetricsEndpoints:
     - port: metrics
 ---
-# The OilScope dashboard. Grafana's sidecar picks up every ConfigMap with this
-# label and loads it, so the dashboard lives in the repository, not in Grafana.
 apiVersion: v1
 kind: ConfigMap
 metadata:

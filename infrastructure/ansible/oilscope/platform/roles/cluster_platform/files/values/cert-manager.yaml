@@ -1,12 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The chart owns the CustomResourceDefinitions, so an upgrade of the release
-# upgrades them too.
 crds:
   enabled: true
 
-# Ask public resolvers whether the DNS-01 record is visible, not the cluster's
-# own CoreDNS, which may answer from a stale cache.
 extraArgs:
   - --dns01-recursive-nameservers-only
   - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53

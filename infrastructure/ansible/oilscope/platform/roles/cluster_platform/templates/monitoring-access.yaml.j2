@@ -5,7 +5,6 @@ kind: Namespace
 metadata:
   name: {{ cluster_platform_charts.monitoring.namespace }}
 ---
-# Grafana and Prometheus answer only over the tailnet, like Headlamp.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -15,8 +14,6 @@ spec:
   ipAllowList:
     sourceRange: {{ cluster_platform_private_ranges | to_json }}
 ---
-# The Grafana administrator, with the password from the cloud secret store, so
-# it survives a reinstall of the release and is never written anywhere else.
 apiVersion: v1
 kind: Secret
 metadata:

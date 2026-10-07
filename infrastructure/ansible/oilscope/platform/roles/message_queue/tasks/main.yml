@@ -14,12 +14,6 @@
       managed database from this machine.
   when: message_queue_database_host | length == 0
 
-# RABBITMQ_DEFAULT_PASS is applied only while the data volume is empty, so a
-# broker that outlives a password change keeps the old one and refuses every
-# client. The host keeps a SHA-256 of the password the volume was built with.
-# When it differs from the current password, or is missing while a volume
-# exists, the broker and its volume are recreated. The queue holds only
-# in-flight fetch results, which the next scheduled fetch produces again.
 - name: Read the fingerprint of the password the broker volume was built with
   ansible.builtin.slurp:
     src: "{{ message_queue_password_marker }}"

@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Every tailnet device that accepts DNS from Tailscale - the default - then
-# resolves the operator pages through the bastions, with nothing in /etc/hosts.
 - name: Read the tailnet's split DNS
   ansible.builtin.uri:
     url: "{{ internal_dns_tailnet_api }}/tailnet/{{ internal_dns_tailnet }}/dns/split-dns"

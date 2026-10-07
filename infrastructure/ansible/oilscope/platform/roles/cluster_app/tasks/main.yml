@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The application inside the cluster: its database as a CloudNativePG cluster,
-# Redis for sessions, the schema, the three services behind Traefik, and a
-# start page. Everything is applied from the controller.
 - name: Refuse to run without the values the cluster needs
   ansible.builtin.assert:
     that:
@@ -26,8 +23,6 @@
       on. With a managed cluster the entry stays in vms for exactly this.
     quiet: true
 
-# The password lands in URLs, where several characters mean something else.
-# urlencode leaves a slash alone, which is legal in a path but not here.
 - name: Build the connection strings
   ansible.builtin.set_fact:
     cluster_app_password_url: >-
@@ -83,8 +78,6 @@
       status: "True"
     wait_timeout: "{{ cluster_app_wait_timeout }}"
 
-# One Job per image: the migrations are idempotent, and a Job cannot change
-# its image, so a new build gets a new Job and an unchanged one is left alone.
 - name: Apply the database migrations
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_app_kubeconfig }}"

@@ -1,15 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Everything Ansible does after terraform apply, in the order it has to happen:
-# the containers Terraform created are filled, the bastion is moved onto its
-# final SSH port and joins the tailnet, and only then is the k3s cluster built
-# through it and the application deployed into it.
-#
-# One variable drives all of it. project_config_path is the same file the
-# Terraform configuration reads, so nothing is described twice.
-#
-# The Docker Compose deployment this replaces is kept at the
-# snapshot/vm-compose tag.
 - name: Add the deployment secret versions
   hosts: localhost
   gather_facts: false

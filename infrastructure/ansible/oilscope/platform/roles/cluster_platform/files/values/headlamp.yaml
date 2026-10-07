@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Headlamp is reached only from inside the clouds' networks - that is, over the
-# tailnet. The Ingress host and the allow list are added by the role, since
-# they come from the project configuration.
 ingress:
   enabled: true
   ingressClassName: traefik

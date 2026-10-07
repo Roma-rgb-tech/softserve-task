@@ -118,10 +118,6 @@
   loop_control:
     label: "{{ item.secret_id }}"
 
-# A value in the environment is an instruction to write it, whatever the
-# container currently holds - that is what a rotation is. Everything else is
-# decided against the cloud, once the containers have been asked what they
-# already have, so a routine run needs nothing exported at all.
 - name: Note which containers the environment supplies a value for
   ansible.builtin.set_fact:
     secret_versions_supplied: >-
@@ -133,15 +129,6 @@
   loop_control:
     label: "{{ item.variable }}"
 
-# The value is made here rather than in Terraform on purpose: random_password
-# writes its result into the state file, and the state is not a place for a
-# payload. Made here it exists only in the memory of this play, and leaves it
-# on stdin of the provider CLI.
-#
-# The alphabet is deliberately alphanumeric. A punctuation character is fine
-# for a secret and not fine for a value that is concatenated into a URL by
-# something downstream - a slash in a password once turned a database DSN into
-# a different host.
 - name: Invent a value for every generated container left unset
   ansible.builtin.set_fact:
     secret_versions_invented: >-

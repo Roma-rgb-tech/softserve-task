@@ -6,12 +6,8 @@ cluster_app_namespace: "{{ oilscope_namespace }}"
 cluster_app_internal_domain: "{{ oilscope_internal_domain }}"
 cluster_app_private_ranges: "{{ oilscope_private_ranges }}"
 
-# Values the first k3s server resolved from the cloud secret store. The role
-# only ever hands them to the API server; none is written to disk.
 cluster_app_secrets: {}
 
-# Images, from registry in the configuration. The database image carries PGMQ,
-# pg_cron and the migrations.
 cluster_app_repository: "{{ cluster_app_config.registry.repository }}"
 cluster_app_image_tag: "{{ cluster_app_config.registry.image_sha }}"
 cluster_app_registry_host: "{{ cluster_app_repository | regex_replace('/.*$', '') }}"
@@ -19,7 +15,6 @@ cluster_app_registry_user: "{{ cluster_app_config.registry.username | default(''
 
 cluster_app_endpoint: "{{ oilscope_public_endpoint }}"
 
-# PostgreSQL, as a CloudNativePG cluster.
 cluster_app_database: "{{ cluster_app_config.database | default({}) }}"
 cluster_app_database_name: "{{ cluster_app_database.database_name | default('oil_tracker') }}"
 cluster_app_database_user: "{{ cluster_app_database.username | default('oil_tracker') }}"
@@ -31,20 +26,14 @@ cluster_app_database_storage_gb: >-
       10 if (oilscope_kubernetes_managed | bool and oilscope_kubernetes_cloud == 'gcp') else 1] | max }}
 cluster_app_database_host: "{{ cluster_app_database_cluster }}-rw"
 
-# Redis for the UI sessions, from the Bitnami chart. Bitnami stopped publishing
-# its free images under the old names in August 2025, so the image comes from
-# the frozen bitnamilegacy copy, and the chart is pinned to a release from
-# before that date (Redis 8.0.3-debian-12-r1) whose image tag exists there.
 cluster_app_redis_chart: oci://registry-1.docker.io/bitnamicharts/redis
 cluster_app_redis_version: 21.2.14
 cluster_app_redis_release: oilscope-redis
 cluster_app_redis_host: "{{ cluster_app_redis_release }}-master"
 
-# Homepage, the start page with a link and a status light for every service.
 cluster_app_homepage_image: ghcr.io/gethomepage/homepage:v2.4.0
 cluster_app_homepage_namespace: homepage
 
-# Where Grafana looks for dashboards and Prometheus lives.
 cluster_app_monitoring_namespace: monitoring
 
 cluster_app_wait_timeout: 600

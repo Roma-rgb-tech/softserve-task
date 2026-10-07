@@ -5,11 +5,6 @@
   become: true
   gather_facts: false
   pre_tasks:
-    # A freshly built bastion still answers on the image default port, and a
-    # configured one answers only on the port from the configuration. Probing
-    # from the controller before the first connection is what makes the same
-    # command work in both cases, rather than an environment variable the
-    # operator has to remember to set and then to unset.
     - name: Look for sshd on the configured port
       become: false
       ansible.builtin.wait_for:
@@ -63,9 +58,6 @@
     - role: oilscope.platform.tailnet
       when: oilscope_tailnet | bool
 
-# Names for the operator pages, served where the tailnet already arrives. Only
-# with a tailnet, which is how those pages are reached, and only once there are
-# nodes to point the names at.
 - name: Answer for the operator pages' names
   hosts: bastion
   gather_facts: false

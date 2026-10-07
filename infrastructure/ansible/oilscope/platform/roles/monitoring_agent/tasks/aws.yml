@@ -23,9 +23,6 @@
     group: root
     mode: "0755"
 
-# fetch-config consumes the file it is given and rewrites the agent's own
-# etc directory, so a template kept there differs on every run. The source
-# lives outside the agent's tree and is only read by fetch-config.
 - name: Configure the CloudWatch agent
   become: true
   ansible.builtin.template:

@@ -172,9 +172,6 @@
   check_mode: false
   no_log: true
 
-# The server cannot say which password it holds, so it carries the Key Vault
-# version it was last given in a tag. A run whose secret version matches the
-# tag leaves the server alone; a new version is applied once and recorded.
 - name: Read which secret version the server was last given
   ansible.builtin.uri:
     url: "{{ managed_database_server_url }}"

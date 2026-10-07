@@ -1,31 +1,21 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The k3s settings of the project configuration, so the release and the extra
-# certificate names are chosen in the same file Terraform reads.
 k3s_settings: "{{ oilscope_project_config.k3s | default({}) }}"
 
 k3s_version: "{{ k3s_settings.version | default('v1.33.4+k3s1') }}"
 k3s_release_url: https://github.com/k3s-io/k3s/releases/download
 
-# Inventory groups. The oilscope inventory plugin builds them from the role
-# label Terraform puts on every VM.
 k3s_server_group: k3s_server
 k3s_agent_group: k3s_agent
 
 k3s_api_port: 6443
 
-# The addresses the inventory plugin composed from the cloud API: the private
-# address every node talks on, and the public one, when the node has any.
 k3s_node_ip: "{{ internal_ip | default(ansible_facts['default_ipv4']['address']) }}"
 k3s_node_external_ip: "{{ public_ip | default('') }}"
 
-# The server every other node joins through: the first host of the server
-# group, which initialises the embedded etcd.
 k3s_first_server: "{{ groups[k3s_server_group] | first }}"
 k3s_server_address: "{{ hostvars[k3s_first_server].internal_ip }}"
 
-# Every address a client may use for the API: each server's private and public
-# address, plus the names from k3s.tls_sans in the configuration.
 k3s_tls_sans: >-
   {{ (groups[k3s_server_group]
       | map('extract', hostvars, 'internal_ip')
@@ -36,8 +26,6 @@ k3s_tls_sans: >-
       + (k3s_settings.tls_sans | default([])))
      | unique }}
 
-# Traefik is installed from its Helm chart instead, as a DaemonSet, so the
-# release k3s bundles is switched off.
 k3s_disable:
   - traefik
 
@@ -47,9 +35,6 @@ k3s_server_token_path: /var/lib/rancher/k3s/server/token
 k3s_extra_server_config: {}
 k3s_extra_agent_config: {}
 
-# Where the administrator kubeconfig lands on the controller, and the address it
-# points at. The default is the first server's private address, which the
-# operator reaches over the tailnet through the bastion's subnet router.
 k3s_kubeconfig_dest: "{{ oilscope_kubeconfig }}"
 k3s_api_endpoint: "{{ k3s_settings.api_endpoint | default(k3s_server_address) }}"
 

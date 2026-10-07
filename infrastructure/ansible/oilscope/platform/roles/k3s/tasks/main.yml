@@ -7,9 +7,6 @@
     k3s_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
     k3s_first: "{{ inventory_hostname == k3s_first_server }}"
 
-# etcd elects a leader by majority. Two servers cannot outvote each other when
-# the link between them breaks, so they add a second point of failure instead
-# of removing one.
 - name: Refuse a server count that cannot form a quorum
   ansible.builtin.fail:
     msg: >-

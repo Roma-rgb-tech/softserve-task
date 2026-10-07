@@ -1,10 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Everything here runs on the controller. Helm and the Kubernetes modules reach
 cluster_platform_kubeconfig: "{{ oilscope_kubeconfig }}"
 
-# One entry per chart. The version is a Helm constraint, so patch releases come
-# in on their own while a new major waits for someone to read its changelog.
 cluster_platform_charts:
   traefik:
     repo: https://traefik.github.io/charts
@@ -32,8 +29,6 @@ cluster_platform_charts:
     version: "^0.45.0"
     namespace: headlamp
 
-# Let's Encrypt. Point it at the staging directory while experimenting: the
-# production one allows five certificates for the same name a week.
 cluster_platform_acme_server: https://acme-v02.api.letsencrypt.org/directory
 cluster_platform_acme_email: ""
 cluster_platform_cloudflare_token: ""
