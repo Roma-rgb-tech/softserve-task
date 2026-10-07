@@ -1,8 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-{#
-  One replica of each service for now: the fetcher schedules its own fetches
-  and would repeat them from every replica, and the services have not been
-  adapted to share work yet.
 {% set image = cluster_app_repository ~ '/%s:' ~ cluster_app_image_tag %}
 {% set services = [
   {'name': 'history', 'port': 8001, 'metrics_port': 9100, 'url_key': 'HISTORY_DATABASE_URL',
