@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The operator's gcloud login reads the values; it holds secretAccessor through
-# the project role it already deploys with.
 - name: Access each mapped secret's latest version from the controller
   ansible.builtin.command:
     argv:

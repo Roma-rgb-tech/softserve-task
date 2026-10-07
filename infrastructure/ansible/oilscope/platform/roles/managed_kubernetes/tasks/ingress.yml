@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Run after cluster_platform has installed Traefik: its two Services are
-# LoadBalancers, and the cloud gives each an address within a minute or two.
-# The public one gets the site's DNS record; the internal one is what the
-# bastion's CoreDNS answers for the operator pages.
 - name: Wait for the load balancers to get their addresses
   kubernetes.core.k8s_info:
     kubeconfig: "{{ managed_kubernetes_kubeconfig }}"
@@ -20,7 +16,6 @@
     - "{{ managed_kubernetes_public_service }}"
     - "{{ managed_kubernetes_internal_service }}"
 
-# GKE and AKS hand out an IP address; an AWS Network Load Balancer a DNS name.
 - name: Read the addresses
   ansible.builtin.set_fact:
     managed_kubernetes_public_address: >-

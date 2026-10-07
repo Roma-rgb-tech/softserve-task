@@ -10,9 +10,6 @@ locals {
   count   = local.enabled ? 1 : 0
   name    = "${local.prefix}-eks"
 
-  # EKS asks for subnets in two zones for its control plane interfaces. The
-  # nodes and both load balancers stay in the first, the bastion's zone, so a
-  # load balancer never has a zone without a node behind it.
   vpc_cidr = var.config.network.vpc_cidr
   node_cidrs = [
     lookup(local.settings, "node_subnet_cidr", cidrsubnet(local.vpc_cidr, 8, 10)),

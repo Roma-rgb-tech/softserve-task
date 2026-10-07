@@ -1,13 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Everything here runs on the controller, with the operator's own gcloud, aws
-# or az login - the one Terraform ran with.
 managed_kubernetes_config: "{{ oilscope_project_config }}"
 managed_kubernetes_settings: "{{ oilscope_kubernetes }}"
 managed_kubernetes_cloud: "{{ oilscope_kubernetes_cloud }}"
 managed_kubernetes_kubeconfig: "{{ oilscope_kubeconfig }}"
 
-# Terraform names the cluster <name_prefix>-<environment>-<gke|eks|aks>.
 managed_kubernetes_kinds:
   gcp: gke
   aws: eks
@@ -15,7 +12,6 @@ managed_kubernetes_kinds:
 managed_kubernetes_name: >-
   {{ oilscope_name_prefix | trim }}-{{ managed_kubernetes_kinds[managed_kubernetes_cloud] }}
 
-# Where it lives, from the same catalog Terraform resolves.
 managed_kubernetes_region_token: "{{ managed_kubernetes_config.default_region }}"
 managed_kubernetes_gcp_project: "{{ oilscope_gcp_project }}"
 managed_kubernetes_gcp_zone: >-
@@ -29,20 +25,14 @@ managed_kubernetes_gcloud: gcloud
 managed_kubernetes_aws: aws
 managed_kubernetes_az: az
 
-# How many nodes must be Ready before anything is installed.
 managed_kubernetes_node_count: "{{ managed_kubernetes_settings.node_count | default(3) }}"
 managed_kubernetes_wait_retries: 60
 managed_kubernetes_wait_delay: 10
 
-# Traefik's two Services, which cluster_platform creates.
 managed_kubernetes_ingress_namespace: traefik
 managed_kubernetes_public_service: traefik
 managed_kubernetes_internal_service: traefik-internal
 
-# The public record, written through the same Cloudflare token cert-manager
-# proves the hostname with. Terraform wrote it for k3s, where the address is
-# known at plan time; a load balancer's address exists only once the cluster
-# has created it.
 managed_kubernetes_endpoint: "{{ oilscope_public_endpoint }}"
 managed_kubernetes_cloudflare_token: ""
 managed_kubernetes_cloudflare_api: https://api.cloudflare.com/client/v4

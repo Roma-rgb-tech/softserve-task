@@ -1,11 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The same thing "kubectl config view --flatten" over both files and then
-# "kubectl config use-context" would do, without needing kubectl: the stand's
-# clusters, users and contexts replace any of the same name - a rebuilt
-# cluster keeps its name but not its certificate - everything else in the
-# file is kept, and the stand's context becomes the current one. The previous
-# file is kept next to it as a timestamped backup.
 - name: Read the stand's kubeconfig
   ansible.builtin.slurp:
     src: "{{ kube_context_source }}"

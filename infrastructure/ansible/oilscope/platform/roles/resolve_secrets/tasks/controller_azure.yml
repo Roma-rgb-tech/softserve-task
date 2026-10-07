@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Terraform made whoever applies it Key Vault Secrets Officer on the vault,
-# which includes reading, so the same az login reads the values here.
 - name: Ask Azure which key vault holds this deployment's secrets
   ansible.builtin.command:
     argv:

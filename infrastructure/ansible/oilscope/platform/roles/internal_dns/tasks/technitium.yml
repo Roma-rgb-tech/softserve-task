@@ -1,12 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Technitium DNS Server in a container on the bastion: the same names as
-# CoreDNS answered, plus a web console to see and edit them, and a query log.
-#
-# Docker is told to keep its hands off the firewall. Left to itself it sets the
-# FORWARD chain to DROP, and the bastion is the tailnet's subnet router: every
-# forwarded packet to the cloud network would stop. The container uses the
-# host's network, so it needs no NAT rules of Docker's anyway.
 - name: Create Docker's configuration directory
   become: true
   ansible.builtin.file:
@@ -40,9 +33,6 @@
   vars:
     docker_engine_group_members: []
 
-# Not a handler: docker_engine flushes handlers on its own, before Docker
-# exists. A fresh install already started with the setting; restarting it
-# once more is harmless.
 - name: Apply the firewall setting to a Docker that was already running  # noqa: no-handler
   become: true
   ansible.builtin.systemd_service:
@@ -50,7 +40,6 @@
     state: restarted
   when: internal_dns_docker_config is changed
 
-# CoreDNS, from before, holds the same address and port.
 - name: Stop CoreDNS if an earlier run installed it
   become: true
   ansible.builtin.systemd_service:
@@ -71,8 +60,6 @@
     group: root
     mode: "0700"
 
-# Invented once, on the bastion, and never sent anywhere else. Technitium reads
-# it on its first start; read it with sudo on the bastion to sign in.
 - name: Invent the administrator password once
   become: true
   ansible.builtin.copy:
@@ -122,7 +109,6 @@
   until:
     - internal_dns_technitium_login.status | default(0) == 200
     - (internal_dns_technitium_login.json | default({})).status | default('') == 'ok'
-  # The first start pulls the image.
   retries: 60
   delay: 5
   no_log: true
@@ -132,7 +118,6 @@
     internal_dns_technitium_token: "{{ internal_dns_technitium_login.json.token }}"
   no_log: true
 
-# Every call below answers 200; whether it worked is in the body's status.
 - name: Answer only on the bastion's private address, and only for its own zones
   ansible.builtin.uri:
     url: "{{ internal_dns_technitium_api }}/settings/set"
@@ -175,8 +160,6 @@
     internal_dns_domain not in
     (internal_dns_technitium_zones.json.response.zones | default([]) | map(attribute='name') | list)
 
-# The first address of each name replaces whatever the name held, the rest are
-# added next to it, so a re-run converges on exactly these addresses.
 - name: Point each operator page at the cluster
   ansible.builtin.uri:
     url: "{{ internal_dns_technitium_api }}/zones/records/add"

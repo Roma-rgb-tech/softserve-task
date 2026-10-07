@@ -29,8 +29,6 @@ resource "azurerm_kubernetes_cluster" "main" {
     type = "SystemAssigned"
   }
 
-  # Azure CNI in overlay mode: nodes take addresses from the subnet, pods from
-  # a range of their own that never touches the virtual network.
   network_profile {
     network_plugin      = "azure"
     network_plugin_mode = "overlay"
@@ -41,7 +39,6 @@ resource "azurerm_kubernetes_cluster" "main" {
     outbound_type       = "loadBalancer"
   }
 
-  # The API keeps a public endpoint that answers only these addresses.
   api_server_access_profile {
     authorized_ip_ranges = local.api_cidrs
   }
@@ -63,8 +60,6 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 }
 
-# The internal load balancer takes an address from the node subnet, which the
-# cluster identity may only do with a network role on the virtual network.
 resource "azurerm_role_assignment" "network" {
   count = local.count
 

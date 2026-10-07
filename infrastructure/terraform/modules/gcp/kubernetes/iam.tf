@@ -1,6 +1,3 @@
-# The nodes run as an account of their own with only what GKE needs to report
-# logs and metrics - not as the Compute Engine default account, which holds
-# Editor on the project.
 resource "google_service_account" "nodes" {
   count = local.count
 

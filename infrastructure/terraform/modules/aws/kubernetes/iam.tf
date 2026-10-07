@@ -67,9 +67,6 @@ resource "aws_iam_role_policy_attachment" "nodes" {
   policy_arn = "${local.policy_arn}/${each.value}"
 }
 
-# The EBS CSI driver creates the volumes CloudNativePG and Prometheus claim.
-# It gets its permissions through EKS Pod Identity, so the nodes themselves
-# never hold them.
 data "aws_iam_policy_document" "pod_identity_assume" {
   statement {
     effect  = "Allow"

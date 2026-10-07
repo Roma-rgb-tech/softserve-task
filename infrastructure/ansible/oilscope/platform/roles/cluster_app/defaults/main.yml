@@ -26,7 +26,6 @@ cluster_app_database_user: "{{ cluster_app_database.username | default('oil_trac
 cluster_app_database_cluster: oilscope-db
 cluster_app_database_major: 18
 cluster_app_database_instances: "{{ (oilscope_cluster.database | default({})).instances | default(2) }}"
-# Persistent Disk on GKE starts at 10 GB, so a smaller claim is raised to that.
 cluster_app_database_storage_gb: >-
   {{ [(oilscope_cluster.database | default({})).storage_gb | default(5) | int,
       10 if (oilscope_kubernetes_managed | bool and oilscope_kubernetes_cloud == 'gcp') else 1] | max }}
@@ -50,7 +49,6 @@ cluster_app_monitoring_namespace: monitoring
 
 cluster_app_wait_timeout: 600
 
-# What Homepage calls the cluster in its resource widget.
 cluster_app_cluster_label: >-
   {{ {'gcp': 'GKE', 'aws': 'EKS', 'azure': 'AKS'}[oilscope_kubernetes_cloud]
      if oilscope_kubernetes_managed | bool else 'k3s' }}

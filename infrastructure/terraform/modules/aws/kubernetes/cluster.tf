@@ -16,8 +16,6 @@ resource "aws_eks_cluster" "main" {
     service_ipv4_cidr = local.service_cidr
   }
 
-  # Access entries rather than the aws-auth ConfigMap. Whoever runs Terraform
-  # becomes cluster administrator, the same identity Ansible runs as.
   access_config {
     authentication_mode                         = "API"
     bootstrap_cluster_creator_admin_permissions = true
@@ -104,8 +102,6 @@ resource "aws_eks_addon" "ebs_csi" {
   ]
 }
 
-# k3s, GKE and AKS ship metrics-server; EKS offers it as an add-on. Homepage's
-# CPU and memory per node, and kubectl top, read it.
 resource "aws_eks_addon" "metrics_server" {
   count = local.count
 

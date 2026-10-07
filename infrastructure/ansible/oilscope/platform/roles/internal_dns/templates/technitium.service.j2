@@ -7,9 +7,6 @@ After=docker.service network-online.target
 Wants=network-online.target
 
 [Service]
-# The host's network: no NAT of Docker's, and the server binds the bastion's
-# private address itself. The configuration directory keeps zones and settings
-# across restarts and image upgrades.
 ExecStartPre=-/usr/bin/docker rm --force technitium
 ExecStart=/usr/bin/docker run --rm --name technitium --network host \
   --volume {{ internal_dns_technitium_dir }}:/etc/dns \

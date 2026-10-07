@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The token rides in a header, so every call is no_log; what went wrong is
-# reported from the status code alone.
 - name: Refuse to run without a Cloudflare token
   ansible.builtin.fail:
     msg: >-
@@ -31,8 +29,6 @@
   register: managed_kubernetes_existing
   no_log: true
 
-# An address record can only be replaced by a record of another type, never
-# changed into one, so anything that is not already the wanted record goes.
 - name: Remove a record that points elsewhere
   ansible.builtin.uri:
     url: "{{ managed_kubernetes_records_url }}/{{ item.id }}"

@@ -1,22 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The Kubernetes cluster and everything in it. Where the cluster comes from is
-# kubernetes.managed in the project configuration:
 #
-#   false (or no kubernetes block)  k3s on the VMs Terraform labelled
-#                                   k3s_server and k3s_agent, which become
-#                                   inventory groups
-#   true                            GKE, EKS or AKS, which Terraform created
-#                                   in place of those VMs; this playbook only
-#                                   fetches its credentials
-#
-# From there on the two are the same: the controller's kubeconfig becomes the
-# operator's current context, and the same roles install the platform layer
-# and the application through it.
-#
-# Order matters for k3s. The first server initialises etcd, the others join it
-# one at a time so the quorum grows by one member at a time, and the agents
-# come last.
 - name: Check the stand before touching it
   hosts: localhost
   connection: local
@@ -81,8 +65,6 @@
     - role: oilscope.platform.managed_kubernetes
       when: oilscope_kubernetes_managed | bool
 
-# kubectl, kubectx and k9s then reach the stand with no --kubeconfig, which is
-# also what Headlamp's desktop app and Lens pick up.
 - name: Make the stand's cluster the operator's current context
   hosts: localhost
   connection: local
@@ -90,10 +72,6 @@
   roles:
     - role: oilscope.platform.kube_context
 
-# The values the cluster needs come from the cloud secret store. On k3s the
-# first server's own cloud identity reads them; a managed cluster has no VM of
-# ours, so the controller reads them with the operator's credentials. Either
-# way they stay in memory and reach the cluster only as Kubernetes Secrets.
 - name: Read the values the cluster needs from the cloud secret store
   hosts: k3s_server[0]
   become: true
@@ -133,9 +111,6 @@
       vars:
         cluster_app_secrets: "{{ oilscope_secrets }}"
 
-# On k3s, Terraform points the public name at a node and the bastion's CoreDNS
-# at the nodes' private addresses. A managed cluster's load balancers get
-# their addresses only now, so both names are pointed at them here.
 - name: Point the names at the managed cluster's load balancers
   hosts: localhost
   connection: local
@@ -158,9 +133,6 @@
       {{ (lookup('ansible.builtin.file', project_config_path) | from_json).tailscale is defined }}
     oilscope_internal_lb: "{{ hostvars['localhost'].managed_kubernetes_internal_address | default('') }}"
   tasks:
-    # An AWS load balancer has a name rather than an address. The bastion,
-    # inside the same network, resolves it to the private addresses CoreDNS
-    # can hand out.
     - name: Resolve the internal load balancer's name
       ansible.builtin.command:
         argv:

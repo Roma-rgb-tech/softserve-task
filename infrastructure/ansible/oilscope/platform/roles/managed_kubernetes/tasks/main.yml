@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# The cluster exists once terraform apply has finished; this only fetches its
-# credentials into the stand's own kubeconfig, the file Helm and the
-# Kubernetes modules use, and waits for its nodes.
 - name: Refuse a cloud this role cannot reach
   ansible.builtin.assert:
     that:
@@ -39,10 +36,6 @@
   retries: "{{ managed_kubernetes_wait_retries }}"
   delay: "{{ managed_kubernetes_wait_delay }}"
 
-# EKS has had no default StorageClass since 1.30, and the gp2 one it still
-# ships uses the retired in-tree driver. CloudNativePG and Prometheus claim
-# volumes without naming a class, so gp3 through the EBS CSI driver becomes
-# the default. GKE (standard-rwo) and AKS (managed-csi) already have one.
 - name: Give EKS a default StorageClass
   kubernetes.core.k8s:
     kubeconfig: "{{ managed_kubernetes_kubeconfig }}"

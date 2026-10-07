@@ -68,11 +68,6 @@ grafana:
     annotations:
       traefik.ingress.kubernetes.io/router.entrypoints: web
       traefik.ingress.kubernetes.io/router.middlewares: monitoring-internal-only@kubernetescrd
-  # Grafana 13 downloads a handful of "preinstalled" app plugins (traces,
-  # profiles, Loki and metrics drill-down) on every start, while it migrates
-  # its SQLite database. None of them has a data source here, and on a fresh
-  # pod the two raced into "database is locked" and a Grafana that never
-  # answered its readiness probe. Turned off, and given room to start.
   grafana.ini:
     plugins:
       preinstall_disabled: true

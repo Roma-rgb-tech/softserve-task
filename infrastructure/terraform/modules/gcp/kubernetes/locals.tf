@@ -24,8 +24,6 @@ locals {
   disk_gb      = lookup(local.settings, "node_disk_gb", 30)
   version      = lookup(local.settings, "version", null)
 
-  # The API answers on a public address, but only to these: where Ansible,
-  # Helm and kubectl run. By default the same addresses the bastion admits.
   api_cidrs = lookup(local.settings, "api_allowed_cidrs", distinct(flatten([
     for name, vm in var.config.vms : lookup(vm, "allowed_cidrs", []) if vm.role == "bastion"
   ])))

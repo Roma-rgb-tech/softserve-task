@@ -2,10 +2,6 @@ locals {
   cloud   = "gcp"
   default = lookup(var.config, "default_cloud", "")
 
-  # With a managed cluster the k3s nodes are not built. Every module that
-  # creates or grants something per VM is handed a configuration without them,
-  # while their secret_mappings still name the containers the cluster needs,
-  # so those containers are kept for Ansible to read from the controller.
   kubernetes         = lookup(var.config, "kubernetes", {})
   managed_kubernetes = lookup(local.kubernetes, "managed", false)
   node_roles         = ["k3s_server", "k3s_agent"]

@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
-# Secrets Manager is regional: Terraform created the containers in the region
-# of default_region, which is where they are read.
 - name: Access each mapped secret's current value from the controller
   ansible.builtin.command:
     argv:

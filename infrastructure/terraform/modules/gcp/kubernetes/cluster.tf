@@ -1,5 +1,3 @@
-# The Kubernetes Engine API is off in a new project. It stays on after a
-# destroy: turning it off would tear down anything else in the project using it.
 resource "google_project_service" "container" {
   count = local.count
 
@@ -8,8 +6,6 @@ resource "google_project_service" "container" {
   disable_on_destroy = false
 }
 
-# A zonal cluster: the free tier covers its control plane, and the nodes are
-# what is paid for, the same e2 machines the k3s nodes were.
 resource "google_container_cluster" "main" {
   count = local.count
 
@@ -19,13 +15,9 @@ resource "google_container_cluster" "main" {
   network    = var.network_id
   subnetwork = google_compute_subnetwork.nodes[0].id
 
-  # The node pool below replaces the default one, so it can change without the
-  # cluster being rebuilt.
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  # The throwaway default pool runs as the nodes' account too, not as the
-  # Compute Engine default one, which some projects have disabled.
   node_config {
     service_account = google_service_account.nodes[0].email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
@@ -41,8 +33,6 @@ resource "google_container_cluster" "main" {
     services_secondary_range_name = "services"
   }
 
-  # Nodes without public addresses; the API keeps a public endpoint, but it
-  # only answers the networks listed below.
   private_cluster_config {
     enable_private_nodes    = true
     enable_private_endpoint = false
@@ -73,7 +63,6 @@ resource "google_container_cluster" "main" {
   depends_on = [google_compute_router_nat.nodes, google_project_service.container, google_project_iam_member.nodes]
 
   lifecycle {
-    # Only the deleted default pool used it; never rebuild the cluster over it.
     ignore_changes = [node_config]
     precondition {
       condition     = local.zone != null && local.region != null

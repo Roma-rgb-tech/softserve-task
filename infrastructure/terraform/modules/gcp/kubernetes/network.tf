@@ -1,6 +1,3 @@
-# The nodes get a subnet of their own, with the pod and Service ranges as its
-# secondary ranges, and a NAT of their own for the images they pull: the
-# workload subnet and its NAT stay exactly as the VMs left them.
 resource "google_compute_subnetwork" "nodes" {
   count = local.count
 
@@ -46,10 +43,6 @@ resource "google_compute_router_nat" "nodes" {
   }
 }
 
-# GKE opens only 443 and 10250 from the control plane to private nodes. The
-# admission webhooks of CloudNativePG (9443) and of the Prometheus operator
-# and cert-manager (10250, 10260) listen on pod ports the API server must also
-# reach, or every resource they validate is refused with a timeout.
 resource "google_compute_firewall" "control_plane_webhooks" {
   count = local.count
 

@@ -13,10 +13,6 @@ resource "aws_subnet" "nodes" {
 
   map_public_ip_on_launch = false
 
-  # The internal-elb role marks where internal load balancers may go; which
-  # subnet each one actually uses is pinned by name in its Service annotation
-  # (cluster_platform), because the cloud controller would otherwise also put
-  # one into the second zone, where no node runs.
   tags = merge(local.tags, {
     Name                                  = "${local.prefix}-eks-${each.key}"
     "kubernetes.io/cluster/${local.name}" = "shared"

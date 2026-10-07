@@ -5,8 +5,6 @@
     resolve_secrets_config: >-
       {{ lookup('ansible.builtin.file', resolve_secrets_config_path) | from_json }}
 
-# On a VM the entry is the host itself. From the controller, for a managed
-# cluster that replaced the VM, it is named explicitly.
 - name: Derive this VM's configuration key
   ansible.builtin.set_fact:
     resolve_secrets_vm_key: >-

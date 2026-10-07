@@ -15,9 +15,6 @@ locals {
     }
   }
 
-  # An EKS cluster's internet-facing load balancer goes into the public
-  # management subnet, which the cloud controller finds by these tags. They
-  # live here, on the subnet's own tags, so the two never fight over them.
   kubernetes = lookup(var.config, "kubernetes", {})
   eks        = lookup(local.kubernetes, "managed", false) && lookup(local.kubernetes, "cloud", local.default) == local.cloud
   eks_elb_tags = local.eks ? {

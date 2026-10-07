@@ -30,15 +30,11 @@ resource "terraform_data" "config_validation" {
       error_message = "Every VM must target a cloud the catalog knows. Requested: ${join(", ", local.requested_clouds)}. In the catalog: ${join(", ", keys(local.config.catalog.size))}."
     }
 
-    # The bastion is the tailnet's way into the cluster's internal load
-    # balancer, and the managed cluster joins the bastion's network.
     precondition {
       condition     = !local.managed_kubernetes || contains(local.bastion_clouds, local.kubernetes_cloud)
       error_message = "kubernetes.cloud is ${local.kubernetes_cloud}, but no bastion is there (bastions: ${join(", ", local.bastion_clouds)}). Put the bastion in the cluster's cloud - set default_cloud, or the bastion's cloud key, to ${local.kubernetes_cloud}."
     }
 
-    # The cluster's subnets are checked against the database's, which share
-    # the same network.
     precondition {
       condition = !local.managed_kubernetes || length(setintersection(
         toset(lookup(local.config.network, "database_subnet_cidrs", [])),
@@ -50,9 +46,6 @@ resource "terraform_data" "config_validation" {
       error_message = "kubernetes.node_subnet_cidr / node_secondary_subnet_cidr must not be one of network.database_subnet_cidrs."
     }
 
-    # On AWS and Azure the managed database only admits the k3s nodes' security
-    # group or subnet. Until it admits the managed cluster's too, the two do
-    # not go together there.
     precondition {
       condition     = !local.managed_kubernetes || !lookup(lookup(local.config, "database", {}), "managed", false) || local.kubernetes_cloud == "gcp"
       error_message = "A managed database together with a managed cluster is only wired up on GCP so far. Keep database.managed false - the database then runs in the cluster as CloudNativePG."

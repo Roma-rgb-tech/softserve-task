@@ -3,10 +3,6 @@
 resolve_secrets_config_path: ""
 resolve_secrets_project_id: ""
 
-# Read the secrets from the controller, with the operator's own cloud
-# credentials, instead of from the VM's identity. For a managed cluster, which
-# has no VM of ours to read them on. resolve_secrets_vm then names the
-# configuration entry whose secret_mappings to read.
 resolve_secrets_from_controller: false
 resolve_secrets_vm: ""
 resolve_secrets_gcloud: gcloud
