@@ -97,6 +97,9 @@ oilscope_kubernetes_managed: "{{ oilscope_kubernetes.managed | default(false) | 
 oilscope_kubernetes_cloud: >-
   {{ oilscope_kubernetes.cloud | default(oilscope_project_config.default_cloud) }}
 
+oilscope_gitops: "{{ oilscope_kubernetes.gitops | default({}) }}"
+oilscope_gitops_enabled: "{{ oilscope_gitops.enabled | default(false) | bool }}"
+
 oilscope_secrets_vm: >-
   {{ (oilscope_project_config.vms | dict2items
       | selectattr('value.role', 'in', ['k3s_server', 'k3s_agent'])

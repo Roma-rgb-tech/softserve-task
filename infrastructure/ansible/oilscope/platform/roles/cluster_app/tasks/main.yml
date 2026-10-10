@@ -14,11 +14,24 @@
     - GHCR_TOKEN
     - OILPRICEAPI_KEY
 
+- name: Refuse to turn GitOps on without a repository and a revision
+  ansible.builtin.assert:
+    that:
+      - cluster_app_gitops_repo_url | length > 0
+      - cluster_app_gitops_revision | length > 0
+    fail_msg: >-
+      kubernetes.gitops.enabled is true, so Argo CD deploys the services from
+      Git. Set kubernetes.gitops.repo_url (an https:// clone URL Argo CD can
+      read) and kubernetes.gitops.revision (the branch or tag to follow).
+    quiet: true
+  when: cluster_app_gitops | bool
+
 - name: Refuse to run without the chart
   ansible.builtin.stat:
     path: "{{ cluster_app_chart_path }}/Chart.yaml"
   register: cluster_app_chart
   failed_when: not cluster_app_chart.stat.exists
+  when: not cluster_app_gitops | bool
 
 - name: Refuse to run without a public hostname
   ansible.builtin.assert:
@@ -110,6 +123,7 @@
     release_namespace: "{{ cluster_app_namespace }}"
     release_values: "{{ cluster_app_chart_values }}"
   register: cluster_app_rendered
+  when: not cluster_app_gitops | bool
 
 - name: Deploy the services and publish the UI
   kubernetes.core.k8s:
@@ -119,6 +133,30 @@
     definition: "{{ cluster_app_rendered.stdout | from_yaml_all | select | list }}"
     wait: true
     wait_timeout: "{{ cluster_app_wait_timeout }}"
+  when: not cluster_app_gitops | bool
+
+- name: Hand the services to Argo CD
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: argocd-application.yaml.j2
+  when: cluster_app_gitops | bool
+
+- name: Wait until Argo CD has synced the services and they are healthy
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    name: "{{ cluster_app_gitops_application }}"
+    namespace: "{{ cluster_app_gitops_namespace }}"
+  register: cluster_app_application
+  until:
+    - cluster_app_application.resources | length > 0
+    - (cluster_app_application.resources[0].status.sync.status | default('')) == 'Synced'
+    - (cluster_app_application.resources[0].status.health.status | default('')) == 'Healthy'
+  retries: "{{ (cluster_app_wait_timeout | int / 10) | int }}"
+  delay: 10
+  when: cluster_app_gitops | bool
 
 - name: Scrape the services and the database, and add the dashboard
   kubernetes.core.k8s:
@@ -141,3 +179,6 @@
       - "Homepage (tailnet only): http://homepage.{{ cluster_app_internal_domain }}"
       - "Headlamp (tailnet only): http://headlamp.{{ cluster_app_internal_domain }}"
       - "Grafana (tailnet only): http://grafana.{{ cluster_app_internal_domain }}"
+      - "{{ ('Argo CD (tailnet only): http://argocd.' ~ cluster_app_internal_domain
+            ~ ' - follows ' ~ cluster_app_gitops_revision ~ ' of ' ~ cluster_app_gitops_repo_url)
+           if cluster_app_gitops | bool else 'Argo CD: off, the services were applied by Ansible' }}"

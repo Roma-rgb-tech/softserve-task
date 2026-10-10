@@ -13,11 +13,9 @@ internal_dns_release_url: https://github.com/coredns/coredns/releases/download
 
 internal_dns_domain: "{{ oilscope_internal_domain }}"
 
-internal_dns_names:
-  - headlamp
-  - homepage
-  - grafana
-  - prometheus
+internal_dns_names: >-
+  {{ ['headlamp', 'homepage', 'grafana', 'prometheus']
+     + (['argocd'] if oilscope_gitops_enabled | default(false) | bool else []) }}
 internal_dns_addresses: >-
   {{ (groups['k3s_server'] | default([]) + groups['k3s_agent'] | default([]))
      | map('extract', hostvars, 'internal_ip') | select | list }}

@@ -46,6 +46,13 @@ cluster_app_chart_values:
     tag: "{{ cluster_app_image_tag }}"
   hostname: "{{ cluster_app_endpoint.hostname }}"
 
+cluster_app_gitops: "{{ oilscope_gitops_enabled | bool }}"
+cluster_app_gitops_namespace: argocd
+cluster_app_gitops_application: oilscope
+cluster_app_gitops_repo_url: "{{ oilscope_gitops.repo_url | default('') }}"
+cluster_app_gitops_revision: "{{ oilscope_gitops.revision | default('') }}"
+cluster_app_gitops_path: "{{ oilscope_gitops.path | default('deploy/helm/oilscope') }}"
+
 cluster_app_cluster_label: >-
   {{ {'gcp': 'GKE', 'aws': 'EKS', 'azure': 'AKS'}[oilscope_kubernetes_cloud]
      if oilscope_kubernetes_managed | bool else 'k3s' }}

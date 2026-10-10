@@ -778,6 +778,35 @@
             "type": "string",
             "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
           }
+        },
+        "gitops": {
+          "description": "Argo CD. enabled true installs Argo CD with the platform layer and hands history, fetcher and ui to it: an Application follows the Helm chart in deploy/helm/oilscope at repo_url and revision, syncs it automatically, prunes what Git no longer has and undoes changes made by hand. enabled false (or no block) renders the same chart and applies it from Ansible. See docs/gitops.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
+          "properties": {
+            "enabled": {
+              "description": "True installs Argo CD and lets it deploy the services.",
+              "type": "boolean"
+            },
+            "repo_url": {
+              "description": "https:// clone URL of this repository that Argo CD can read without credentials. Required when enabled.",
+              "type": "string",
+              "pattern": "^https://"
+            },
+            "revision": {
+              "description": "Branch, tag or commit Argo CD follows. Required when enabled.",
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "description": "Directory of the chart inside the repository.",
+              "type": "string",
+              "default": "deploy/helm/oilscope"
+            }
+          }
         }
       }
     },

@@ -281,7 +281,12 @@
   "kubernetes": {
     "managed": true,
     "node_count": 3,
-    "node_size": "medium"
+    "node_size": "medium",
+    "gitops": {
+      "enabled": true,
+      "repo_url": "https://github.com/example-org/example-project.git",
+      "revision": "main"
+    }
   },
   "cluster": {
     "namespace": "oilscope",

@@ -28,6 +28,11 @@ cluster_platform_charts:
     chart: headlamp
     version: "^0.45.0"
     namespace: headlamp
+  argo_cd:
+    repo: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    version: "^10.10.0"
+    namespace: argocd
 
 cluster_platform_acme_server: https://acme-v02.api.letsencrypt.org/directory
 cluster_platform_acme_email: ""
@@ -38,6 +43,7 @@ cluster_platform_internal_domain: "{{ oilscope_internal_domain }}"
 cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"
 
 cluster_platform_managed: "{{ oilscope_kubernetes_managed | bool }}"
+cluster_platform_gitops: "{{ oilscope_gitops_enabled | bool }}"
 cluster_platform_cloud: "{{ oilscope_kubernetes_cloud }}"
 
 cluster_platform_traefik_timeout: "{{ '15m' if cluster_platform_managed | bool else '5m' }}"

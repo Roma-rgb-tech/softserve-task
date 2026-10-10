@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ cluster_app_gitops_application }}
+  namespace: {{ cluster_app_gitops_namespace }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ cluster_app_gitops_repo_url }}
+    targetRevision: {{ cluster_app_gitops_revision | to_json }}
+    path: {{ cluster_app_gitops_path }}
+    helm:
+      releaseName: oilscope
+      valuesObject: {{ cluster_app_chart_values | to_json }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ cluster_app_namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

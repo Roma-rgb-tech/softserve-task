@@ -164,6 +164,29 @@
                 type: Prefix
     wait: true
 
+- name: Create the Argo CD namespace and its internal-only allow list
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: argocd-access.yaml.j2
+  when: cluster_platform_gitops | bool
+
+- name: Install Argo CD, reachable only over the tailnet
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: argocd
+    chart_repo_url: "{{ cluster_platform_charts.argo_cd.repo }}"
+    chart_ref: "{{ cluster_platform_charts.argo_cd.chart }}"
+    chart_version: "{{ cluster_platform_charts.argo_cd.version }}"
+    release_namespace: "{{ cluster_platform_charts.argo_cd.namespace }}"
+    values_files:
+      - "{{ role_path }}/files/values/argo-cd.yaml"
+    values:
+      global:
+        domain: "argocd.{{ cluster_platform_internal_domain }}"
+    wait: true
+  when: cluster_platform_gitops | bool
+
 - name: Tell the operator how to sign in
   ansible.builtin.debug:
     msg:
@@ -174,3 +197,12 @@
       - "Grafana: http://grafana.{{ cluster_platform_internal_domain }} - admin, password in
         the GRAFANA_ADMIN_PASSWORD container of the cloud secret store"
       - "Prometheus: http://prometheus.{{ cluster_platform_internal_domain }}"
+
+- name: Tell the operator how to sign in to Argo CD
+  ansible.builtin.debug:
+    msg:
+      - "Argo CD: http://argocd.{{ cluster_platform_internal_domain }} - admin, password:
+        kubectl --kubeconfig {{ cluster_platform_kubeconfig }}
+        -n {{ cluster_platform_charts.argo_cd.namespace }} get secret argocd-initial-admin-secret
+        -o jsonpath='{.data.password}' | base64 -d"
+  when: cluster_platform_gitops | bool

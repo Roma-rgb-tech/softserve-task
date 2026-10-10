@@ -64,6 +64,7 @@ Optional fields (see `project-config.schema.json`):
 | `service_cidr` | `10.41.0.0/20` | ClusterIP range. |
 | `control_plane_cidr` | `172.16.0.0/28` | GKE only: the private control plane's peering range. |
 | `api_allowed_cidrs` | the bastion's `allowed_cidrs` | Who may reach the public API endpoint (Ansible, kubectl). |
+| `gitops` | off | Argo CD deploys the services from Git; see [gitops.md](gitops.md). |
 
 ## What Terraform creates
 
