@@ -67,6 +67,7 @@ module "secrets" {
   cluster_reader = {
     enabled      = module.kubernetes.external_secrets_reader.enabled
     principal_id = module.kubernetes.external_secrets_reader.principal_id
+    secret_ids   = local.external_secret_ids
   }
 }
 

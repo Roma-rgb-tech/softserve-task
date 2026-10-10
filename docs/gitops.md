@@ -93,8 +93,9 @@ No secret value is in Git or in the Argo CD Applications. On AKS:
 1. Terraform turns on the cluster's OIDC issuer and workload identity and
    creates the managed identity `<prefix>-external-secrets`, with a federated
    credential that trusts the `oilscope-secrets` service account in the
-   application namespace, and *Key Vault Secrets User* on each of the
-   cluster's secrets (one secret at a time, never the whole vault).
+   application namespace, and *Key Vault Secrets User* on each of the four
+   application secrets (one secret at a time, never the whole vault; the
+   Cloudflare token and the Grafana password stay out of its reach).
 2. `cluster_platform` installs the External Secrets Operator.
 3. `cluster_app` creates the `oilscope-secrets` Application for
    `deploy/helm/oilscope-secrets`: the service account, a `SecretStore` for the

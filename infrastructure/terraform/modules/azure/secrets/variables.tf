@@ -27,13 +27,15 @@ variable "cluster_secret_ids" {
 }
 
 variable "cluster_reader" {
-  description = "The managed cluster's External Secrets identity. When enabled, it may read each of cluster_secret_ids (Key Vault Secrets User, one secret at a time)."
+  description = "The managed cluster's External Secrets identity. When enabled, it may read each of secret_ids, a subset of cluster_secret_ids (Key Vault Secrets User, one secret at a time)."
   type = object({
     enabled      = bool
     principal_id = string
+    secret_ids   = list(string)
   })
   default = {
     enabled      = false
     principal_id = null
+    secret_ids   = []
   }
 }
