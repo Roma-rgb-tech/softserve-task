@@ -49,3 +49,74 @@ jobs:
       dockerfile: infrastructure/docker/Dockerfile.database
       context: .
       description: Petroscope database
+
+  promote:
+    name: Promote the images in the chart
+    # A tag release keeps the chart as it is; every branch build becomes the
+    # release Argo CD runs for that branch.
+    if: github.ref_type == 'branch'
+    needs:
+      - fetcher
+      - history
+      - ui
+      - database
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: promote-${{ github.ref }}
+      cancel-in-progress: false
+
+    env:
+      VALUES: deploy/helm/oilscope/values.yaml
+      TAG: ${{ github.sha }}
+      BRANCH: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Write the new tag into the chart
+        id: bump
+        run: |
+          current="$(yq '.image.tag' "${VALUES}")"
+
+          # A newer build may have promoted already; never move the tag back.
+          if [ "${current}" = "${TAG}" ] \
+            || git merge-base --is-ancestor "${TAG}" "${current}" 2>/dev/null; then
+            echo "The chart already runs ${current}; nothing to promote."
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # sed keeps the file's comments and blank lines; yq would drop them.
+          sed -i -E "0,/^  tag: /s|^  tag: .*$|  tag: \"${TAG}\"|" "${VALUES}"
+          test "$(yq '.image.tag' "${VALUES}")" = "${TAG}"
+          echo "changed=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Commit the promotion
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(deploy): promote images ${TAG::12}" -- "${VALUES}"
+
+          # Commits pushed with GITHUB_TOKEN start no new workflow runs, so
+          # this cannot loop back into another build.
+          if git push origin "HEAD:${BRANCH}"; then
+            exit 0
+          fi
+
+          # A protected branch refuses the push: propose the change instead.
+          promote="deploy/promote-${TAG::12}"
+          git push origin "HEAD:refs/heads/${promote}"
+          gh pr create \
+            --base "${BRANCH}" \
+            --head "${promote}" \
+            --title "chore(deploy): promote images ${TAG::12}" \
+            --body "Points deploy/helm/oilscope at the images built from ${TAG}. Argo CD rolls them out once this is merged."

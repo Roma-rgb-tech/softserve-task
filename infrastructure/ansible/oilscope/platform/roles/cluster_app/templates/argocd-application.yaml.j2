@@ -15,7 +15,7 @@ spec:
     path: {{ cluster_app_gitops_path }}
     helm:
       releaseName: oilscope
-      valuesObject: {{ cluster_app_chart_values | to_json }}
+      valuesObject: {{ cluster_app_gitops_values | to_json }}
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ cluster_app_namespace }}

@@ -102,6 +102,7 @@
     kubeconfig: "{{ cluster_app_kubeconfig }}"
     state: present
     template: migrate.yaml.j2
+  when: not cluster_app_gitops | bool
 
 - name: Wait for the migrations to finish
   kubernetes.core.k8s_info:
@@ -115,6 +116,7 @@
       type: Complete
       status: "True"
     wait_timeout: "{{ cluster_app_wait_timeout }}"
+  when: not cluster_app_gitops | bool
 
 - name: Render the services from the chart
   kubernetes.core.helm_template:

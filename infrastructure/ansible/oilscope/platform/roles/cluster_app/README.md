@@ -10,7 +10,8 @@ OilScope inside the cluster, applied from the controller:
    an `ImageCatalog`. PGMQ, pg_cron, hstore and pgcrypto, the queue and the
    grants the application role needs are created once, at bootstrap, by the
    superuser.
-4. The migrations, as one Job per image tag.
+4. The migrations, as one Job per image tag (with GitOps, a PreSync hook of
+   the chart instead).
 5. history, fetcher and ui, and an Ingress for the UI with a certificate from
    cert-manager, all from the Helm chart in `deploy/helm/oilscope`. Without
    GitOps the role renders the chart and applies it; with

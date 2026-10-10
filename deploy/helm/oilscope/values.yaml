@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# The stand-specific values (image, hostname) come from the project
-# configuration: Ansible passes them to `helm template`, or writes them into
-# the Argo CD Application when GitOps is on.
+# The hostname comes from the project configuration: Ansible passes it to
+# `helm template`, or writes it into the Argo CD Application when GitOps is on.
+#
+# With GitOps the image tag below is the release that runs: the "Publish
+# application images" workflow commits the new tag here after it pushes the
+# images, and Argo CD rolls it out. Without GitOps Ansible overrides it with
+# registry.image_sha from the project configuration.
 
 image:
-  # ghcr.io/<org>/<project>; each service is <repository>/<service>:<tag>.
-  repository: ""
-  tag: ""
+  # Each service is <repository>/<service>:<tag>.
+  repository: ghcr.io/ua-academy-projects/push-and-pray
+  tag: "647cc3da2ae3e82cc204cfc6879fa8e77012d58b"
 
 # The public hostname the UI answers on.
 hostname: ""
@@ -42,6 +46,30 @@ resources:
     memory: 64Mi
   limits:
     memory: 256Mi
+
+# Migrations run as an Argo CD PreSync hook, so a new tag migrates the
+# database before the services roll. Without GitOps the cluster_app role runs
+# them itself and turns this off.
+migrations:
+  enabled: true
+  database:
+    host: oilscope-db-rw
+    name: oil_tracker
+    # The CloudNativePG role's credentials (basic-auth: username, password).
+    userSecret: oilscope-db-app-user
+  # The database image runs psql as the postgres user.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
 
 services:
   history:

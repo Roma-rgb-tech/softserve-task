@@ -45,6 +45,20 @@ cluster_app_chart_values:
     repository: "{{ cluster_app_repository }}"
     tag: "{{ cluster_app_image_tag }}"
   hostname: "{{ cluster_app_endpoint.hostname }}"
+  migrations:
+    enabled: false
+
+# With GitOps the image tag is not passed: the one committed in the chart's
+# values.yaml is the release, and CI moves it forward.
+cluster_app_gitops_values:
+  image:
+    repository: "{{ cluster_app_repository }}"
+  hostname: "{{ cluster_app_endpoint.hostname }}"
+  migrations:
+    database:
+      host: "{{ cluster_app_database_host }}"
+      name: "{{ cluster_app_database_name }}"
+      userSecret: "{{ cluster_app_database_cluster }}-app-user"
 
 cluster_app_gitops: "{{ oilscope_gitops_enabled | bool }}"
 cluster_app_gitops_namespace: argocd
