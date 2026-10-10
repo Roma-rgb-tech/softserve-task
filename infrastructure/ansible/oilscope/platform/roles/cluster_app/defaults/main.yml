@@ -38,6 +38,14 @@ cluster_app_monitoring_namespace: monitoring
 
 cluster_app_wait_timeout: 600
 
+cluster_app_chart_path: >-
+  {{ ((role_path | realpath) ~ '/../../../../../../deploy/helm/oilscope') | realpath }}
+cluster_app_chart_values:
+  image:
+    repository: "{{ cluster_app_repository }}"
+    tag: "{{ cluster_app_image_tag }}"
+  hostname: "{{ cluster_app_endpoint.hostname }}"
+
 cluster_app_cluster_label: >-
   {{ {'gcp': 'GKE', 'aws': 'EKS', 'azure': 'AKS'}[oilscope_kubernetes_cloud]
      if oilscope_kubernetes_managed | bool else 'k3s' }}

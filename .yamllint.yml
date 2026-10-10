@@ -10,6 +10,9 @@ ignore: |
   .venv/
   node_modules/
   services/ui/frontend/node_modules/
+  # Helm templates are Go templates that render to YAML, not YAML themselves;
+  # the "Helm chart" job lints them with `helm lint` instead.
+  deploy/helm/*/templates/
 
 rules:
   # Compose files legitimately contain long connection strings and healthcheck

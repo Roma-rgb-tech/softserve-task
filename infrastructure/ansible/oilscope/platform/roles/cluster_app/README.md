@@ -12,7 +12,8 @@ OilScope inside the cluster, applied from the controller:
    superuser.
 4. The migrations, as one Job per image tag.
 5. history, fetcher and ui, and an Ingress for the UI with a certificate from
-   cert-manager.
+   cert-manager, rendered from the Helm chart in `deploy/helm/oilscope` and
+   applied.
 6. Homepage, configured by a ConfigMap, with a link and a status light for
    every service. Reachable only from the private ranges.
 7. ServiceMonitors for the services, a PodMonitor for the PostgreSQL

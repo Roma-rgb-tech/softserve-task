@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+apiVersion: v2
+name: oilscope
+description: history, fetcher and ui, and the Ingress that publishes the UI
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

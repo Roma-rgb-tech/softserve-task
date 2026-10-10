@@ -14,6 +14,12 @@
     - GHCR_TOKEN
     - OILPRICEAPI_KEY
 
+- name: Refuse to run without the chart
+  ansible.builtin.stat:
+    path: "{{ cluster_app_chart_path }}/Chart.yaml"
+  register: cluster_app_chart
+  failed_when: not cluster_app_chart.stat.exists
+
 - name: Refuse to run without a public hostname
   ansible.builtin.assert:
     that:
@@ -97,11 +103,20 @@
       status: "True"
     wait_timeout: "{{ cluster_app_wait_timeout }}"
 
+- name: Render the services from the chart
+  kubernetes.core.helm_template:
+    chart_ref: "{{ cluster_app_chart_path }}"
+    release_name: oilscope
+    release_namespace: "{{ cluster_app_namespace }}"
+    release_values: "{{ cluster_app_chart_values }}"
+  register: cluster_app_rendered
+
 - name: Deploy the services and publish the UI
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_app_kubeconfig }}"
     state: present
-    template: workloads.yaml.j2
+    namespace: "{{ cluster_app_namespace }}"
+    definition: "{{ cluster_app_rendered.stdout | from_yaml_all | select | list }}"
     wait: true
     wait_timeout: "{{ cluster_app_wait_timeout }}"
 

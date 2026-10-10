@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Read by every Trivy run in this repository (and passed explicitly by the
+# Security workflow). The OilScope chart refuses to render without an image
+# and a hostname, so the misconfiguration scan renders it with placeholders;
+# without them Trivy skips the chart and never checks its manifests.
+misconfiguration:
+  helm:
+    set:
+      - image.repository=ghcr.io/example-org/example-project
+      - image.tag=0123456789abcdef0123456789abcdef01234567
+      - hostname=app.example.com

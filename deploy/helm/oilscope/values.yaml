@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# The stand-specific values (image, hostname) come from the project
+# configuration: Ansible passes them to `helm template`, or writes them into
+# the Argo CD Application when GitOps is on.
+
+image:
+  # ghcr.io/<org>/<project>; each service is <repository>/<service>:<tag>.
+  repository: ""
+  tag: ""
+
+# The public hostname the UI answers on.
+hostname: ""
+
+# Secrets the cluster_app role creates before the chart is applied.
+imagePullSecret: oilscope-registry
+appSecret: oilscope-app
+
+tls:
+  clusterIssuer: letsencrypt
+  secretName: oilscope-tls
+
+replicas: 1
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+services:
+  history:
+    port: 8001
+    metricsPort: 9100
+    databaseUrlKey: HISTORY_DATABASE_URL
+    secretEnv: {}
+    env:
+      METRICS_PORT: "9100"
+      QUEUE_BACKEND: pgmq
+      PGMQ_QUEUE: price_observations
+      PGMQ_VISIBILITY_TIMEOUT_SECONDS: "60"
+      PGMQ_POLL_INTERVAL_SECONDS: "1"
+      PGMQ_MAX_ATTEMPTS: "5"
+      LOG_LEVEL: INFO
+      TZ: UTC
+
+  fetcher:
+    port: 8002
+    metricsPort: null
+    databaseUrlKey: FETCHER_DATABASE_URL
+    secretEnv:
+      OILPRICEAPI_KEY: OILPRICEAPI_KEY
+    env:
+      QUEUE_BACKEND: pgmq
+      PGMQ_QUEUE: price_observations
+      DATA_PROVIDER: oilpriceapi
+      FETCH_CRON_HOURS: "0,6,12,18"
+      FETCH_TIMEZONE: UTC
+      FETCH_ON_STARTUP: "true"
+      REQUEST_TIMEOUT_SECONDS: "15"
+      LISTEN_ADDRESS: "0.0.0.0:8002"
+      TZ: UTC
+
+  ui:
+    port: 8080
+    metricsPort: 9100
+    databaseUrlKey: UI_DATABASE_URL
+    secretEnv:
+      REDIS_URL: REDIS_URL
+    env:
+      METRICS_PORT: "9100"
+      HISTORY_SERVICE_URL: "http://history:8001"
+      SESSION_BACKEND: redis
+      SESSION_TTL_SECONDS: "2592000"
+      SESSION_COOKIE_SECURE: "true"
+      LOG_LEVEL: INFO
+      TZ: UTC

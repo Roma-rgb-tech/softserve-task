@@ -417,3 +417,41 @@ jobs:
           python-version: "3.14"
           working-directory: infrastructure/ansible
           requirements_file: ""
+
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+
+    env:
+      CHART: deploy/helm/oilscope
+      KUBECONFORM_VERSION: v0.7.0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Lint the chart
+        run: |
+          helm lint --strict "${CHART}" \
+            --set image.repository=ghcr.io/example-org/example-project \
+            --set image.tag=0123456789abcdef0123456789abcdef01234567 \
+            --set hostname=app.example.com
+
+      - name: Render the chart
+        run: |
+          helm template oilscope "${CHART}" --namespace oilscope \
+            --set image.repository=ghcr.io/example-org/example-project \
+            --set image.tag=0123456789abcdef0123456789abcdef01234567 \
+            --set hostname=app.example.com > "${RUNNER_TEMP}/rendered.yaml"
+
+      - name: Validate the manifests against the Kubernetes schemas
+        run: |
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C "${RUNNER_TEMP}" kubeconform
+          "${RUNNER_TEMP}/kubeconform" -strict -summary -ignore-missing-schemas \
+            "${RUNNER_TEMP}/rendered.yaml"

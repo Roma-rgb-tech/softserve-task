@@ -21,6 +21,7 @@ before merging*). The names below are exactly what GitHub reports:
 | `Docker image (history)`| the history image builds                               |
 | `Docker image (ui)`     | the UI image builds                                    |
 | `Terraform`             | terraform fmt and validate, once Terraform exists      |
+| `Helm chart`            | helm lint, helm template and kubeconform on `deploy/helm/oilscope` |
 
 Also enable *Require branches to be up to date before merging*, otherwise two
 PRs that each pass individually can still break `develop` when both land.
