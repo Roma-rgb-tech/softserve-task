@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+- name: Create the Argo CD Application {{ cluster_app_argocd_app.name }}
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: argocd-application.yaml.j2
+
+- name: Wait until Argo CD reports Synced and Healthy for {{ cluster_app_argocd_app.name }}
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    name: "{{ cluster_app_argocd_app.name }}"
+    namespace: "{{ cluster_app_gitops_namespace }}"
+  register: cluster_app_application
+  until:
+    - cluster_app_application.resources | length > 0
+    - (cluster_app_application.resources[0].status.sync.status | default('')) == 'Synced'
+    - (cluster_app_application.resources[0].status.health.status | default('')) == 'Healthy'
+  retries: "{{ (cluster_app_wait_timeout | int / 10) | int }}"
+  delay: 10

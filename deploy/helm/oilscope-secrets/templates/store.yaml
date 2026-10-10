@@ -1,0 +1,25 @@
+{{- /* SPDX-License-Identifier: GPL-2.0-or-later */ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.serviceAccount }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    azure.workload.identity/client-id: {{ required "azure.clientId is required" .Values.azure.clientId | quote }}
+    azure.workload.identity/tenant-id: {{ required "azure.tenantId is required" .Values.azure.tenantId | quote }}
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: key-vault
+  annotations:
+    # Before the ExternalSecrets that use it.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  provider:
+    azurekv:
+      authType: WorkloadIdentity
+      vaultUrl: {{ required "azure.vaultUrl is required" .Values.azure.vaultUrl | quote }}
+      serviceAccountRef:
+        name: {{ .Values.serviceAccount }}

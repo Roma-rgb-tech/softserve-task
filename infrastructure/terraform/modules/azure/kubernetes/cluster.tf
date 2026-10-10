@@ -45,6 +45,11 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   role_based_access_control_enabled = true
 
+  # The cluster's service account tokens can be exchanged for Entra ID tokens,
+  # so External Secrets reads Key Vault without a stored credential.
+  oidc_issuer_enabled       = true
+  workload_identity_enabled = true
+
   tags = local.tags
 
   lifecycle {

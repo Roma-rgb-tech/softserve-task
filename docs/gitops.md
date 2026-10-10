@@ -50,16 +50,71 @@ ansible-playbook oilscope.platform.site \
 
 | Step | Role | GitOps off | GitOps on |
 | --- | --- | --- | --- |
-| Platform layer | `cluster_platform` | Traefik, cert-manager, CloudNativePG, monitoring, Headlamp | the same, plus the `argo-cd` chart in `argocd` |
-| Secrets, Redis, database, migrations | `cluster_app` | applied by Ansible | applied by Ansible (unchanged) |
-| history, fetcher, ui, Ingress | `cluster_app` | `helm template` of the chart, applied by Ansible | an Argo CD `Application` for the chart; Ansible waits until it is *Synced* and *Healthy* |
+| Platform layer | `cluster_platform` | Traefik, cert-manager, CloudNativePG, monitoring, Headlamp | the same, plus `argo-cd` in `argocd`, and on AKS `external-secrets` |
+| Application secrets | `cluster_app` | written by Ansible from the cloud secret store | on AKS: the `oilscope-secrets` Application, External Secrets copies them from Key Vault; elsewhere written by Ansible |
+| Redis, database | `cluster_app` | applied by Ansible | applied by Ansible |
+| Migrations | `cluster_app` | a Job per image tag, run by Ansible | a PreSync hook of the `oilscope` Application, run before every rollout |
+| history, fetcher, ui, Ingress | `cluster_app` | `helm template` of the chart, applied by Ansible | the `oilscope` Application; Ansible waits until it is *Synced* and *Healthy* |
 | `argocd.<internal_domain>` | `internal_dns` | - | a record on the bastion's DNS, like Grafana's |
 
-Secrets stay out of Git: the role still creates `oilscope-app` and
-`oilscope-registry` from the cloud secret store, and the chart only refers to
-them by name. The stand-specific values (image repository and tag, public
-hostname) come from the project configuration and are written into the
-Application's `helm.valuesObject`.
+The stand-specific values (image repository, public hostname, the Key Vault and
+its identity) come from the project configuration and Azure, and are written
+into each Application's `helm.valuesObject`. The image **tag** is not: it lives
+in Git.
+
+## Releasing a new image
+
+```
+merge to develop ──► Publish application images ──► images :<sha> in GHCR
+                              │
+                              └─ promote job: image.tag: "<sha>" in
+                                 deploy/helm/oilscope/values.yaml, committed
+                                 to the same branch
+                                              │
+                         Argo CD sees the commit ┘──► PreSync: migrate
+                                                      └─► rolling update
+```
+
+- The `promote` job in `.github/workflows/publish-images.yaml` runs after the
+  four images are pushed, for any branch build (pushes to `develop` and `main`,
+  or *Run workflow* on another branch). It never moves the tag backwards: a
+  build older than the one already in the chart changes nothing.
+- It pushes with `GITHUB_TOKEN`, and GitHub starts no workflow for such a
+  push, so the promotion cannot trigger another build. On a protected branch
+  the push is refused and the job opens a pull request with the change instead.
+- Rolling back a release is a revert of the promotion commit.
+- Without GitOps nothing changes: Ansible still deploys `registry.image_sha`
+  from the project configuration.
+
+## Secrets with External Secrets (AKS)
+
+No secret value is in Git or in the Argo CD Applications. On AKS:
+
+1. Terraform turns on the cluster's OIDC issuer and workload identity and
+   creates the managed identity `<prefix>-external-secrets`, with a federated
+   credential that trusts the `oilscope-secrets` service account in the
+   application namespace, and *Key Vault Secrets User* on each of the
+   cluster's secrets (one secret at a time, never the whole vault).
+2. `cluster_platform` installs the External Secrets Operator.
+3. `cluster_app` creates the `oilscope-secrets` Application for
+   `deploy/helm/oilscope-secrets`: the service account, a `SecretStore` for the
+   vault, and one `ExternalSecret` per Kubernetes Secret (`oilscope-registry`,
+   `oilscope-db-app-user`, `oilscope-redis`, `oilscope-app`). The templates in
+   the ExternalSecrets build the registry login and the connection strings
+   from the raw values.
+4. External Secrets re-reads Key Vault every 10 minutes. Rotating a value is
+   now: put a new version in Key Vault (`upload_secret_versions.yml`, or the
+   portal), wait for the refresh, restart the pods that read it. Ansible does
+   not touch the cluster.
+
+```sh
+kubectl -n oilscope get externalsecrets     # STATUS SecretSynced, READY True
+# Force a refresh now instead of waiting for the interval:
+kubectl -n oilscope annotate externalsecret oilscope-registry force-sync=$(date +%s) --overwrite
+```
+
+On GKE and EKS GitOps still works; the secrets are written by Ansible as
+before.
 
 ## Signing in
 
@@ -77,7 +132,7 @@ The CLI works too: `argocd login argocd.oilscope.internal --insecure --grpc-web`
 ## Showing it works
 
 ```sh
-kubectl -n argocd get applications            # oilscope   Synced   Healthy
+kubectl -n argocd get applications            # oilscope and oilscope-secrets: Synced Healthy
 
 # Drift: scale by hand, watch Argo CD put it back within seconds
 kubectl -n oilscope scale deployment ui --replicas=0
@@ -93,11 +148,11 @@ by Prometheus through the chart's ServiceMonitors.
 
 ## Limits and next steps
 
-- The image tag is still chosen by the project configuration. The next step is
-  to keep it in Git as well, with CI (or Argo CD Image Updater) committing the
-  new tag after `publish-images` pushes an image.
-- Redis, the database and the migrations stay in Ansible: they are bootstrap
-  and stateful steps that run once per stand.
+- Redis and the database stay in Ansible: they are bootstrap and stateful
+  steps that run once per stand. The database image (CloudNativePG's
+  `ImageCatalog`) still follows `registry.image_sha`.
+- External Secrets covers Azure only; GCP Secret Manager and AWS Secrets
+  Manager need the same workload identity setup on GKE and EKS.
 - Argo CD itself is installed by Ansible (a bootstrap has to start
   somewhere). It could then manage the rest of the platform layer as more
   Applications (the app-of-apps pattern).

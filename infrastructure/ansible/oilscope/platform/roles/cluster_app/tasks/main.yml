@@ -26,6 +26,16 @@
     quiet: true
   when: cluster_app_gitops | bool
 
+- name: Refuse to read the secrets through External Secrets without GitOps
+  ansible.builtin.assert:
+    that:
+      - cluster_app_gitops | bool
+    fail_msg: >-
+      cluster_app_external_secrets needs kubernetes.gitops.enabled: the
+      ExternalSecrets live in deploy/helm/oilscope-secrets and Argo CD applies them.
+    quiet: true
+  when: cluster_app_external_secrets | bool
+
 - name: Refuse to run without the chart
   ansible.builtin.stat:
     path: "{{ cluster_app_chart_path }}/Chart.yaml"
@@ -66,6 +76,38 @@
     state: present
     template: secrets.yaml.j2
   no_log: true
+  when: not cluster_app_external_secrets | bool
+
+- name: Find the key vault and the identity External Secrets reads it as
+  ansible.builtin.include_tasks: external_secrets_azure.yml
+  when: cluster_app_external_secrets | bool
+
+- name: Let External Secrets copy the secrets from Key Vault
+  ansible.builtin.include_tasks: argocd_application.yml
+  vars:
+    cluster_app_argocd_app:
+      name: "{{ cluster_app_gitops_application }}-secrets"
+      path: "{{ cluster_app_gitops_secrets_path }}"
+      values: "{{ cluster_app_secrets_values }}"
+  when: cluster_app_external_secrets | bool
+
+- name: Wait for every secret the cluster needs
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    kind: Secret
+    name: "{{ item }}"
+    namespace: "{{ cluster_app_namespace }}"
+  register: cluster_app_secret
+  until: cluster_app_secret.resources | length > 0
+  retries: 30
+  delay: 10
+  loop:
+    - oilscope-registry
+    - "{{ cluster_app_database_cluster }}-app-user"
+    - oilscope-redis
+    - oilscope-app
+  no_log: true
+  when: cluster_app_external_secrets | bool
 
 - name: Install Redis for the UI sessions
   kubernetes.core.helm:
@@ -138,26 +180,12 @@
   when: not cluster_app_gitops | bool
 
 - name: Hand the services to Argo CD
-  kubernetes.core.k8s:
-    kubeconfig: "{{ cluster_app_kubeconfig }}"
-    state: present
-    template: argocd-application.yaml.j2
-  when: cluster_app_gitops | bool
-
-- name: Wait until Argo CD has synced the services and they are healthy
-  kubernetes.core.k8s_info:
-    kubeconfig: "{{ cluster_app_kubeconfig }}"
-    api_version: argoproj.io/v1alpha1
-    kind: Application
-    name: "{{ cluster_app_gitops_application }}"
-    namespace: "{{ cluster_app_gitops_namespace }}"
-  register: cluster_app_application
-  until:
-    - cluster_app_application.resources | length > 0
-    - (cluster_app_application.resources[0].status.sync.status | default('')) == 'Synced'
-    - (cluster_app_application.resources[0].status.health.status | default('')) == 'Healthy'
-  retries: "{{ (cluster_app_wait_timeout | int / 10) | int }}"
-  delay: 10
+  ansible.builtin.include_tasks: argocd_application.yml
+  vars:
+    cluster_app_argocd_app:
+      name: "{{ cluster_app_gitops_application }}"
+      path: "{{ cluster_app_gitops_path }}"
+      values: "{{ cluster_app_gitops_values }}"
   when: cluster_app_gitops | bool
 
 - name: Scrape the services and the database, and add the dashboard

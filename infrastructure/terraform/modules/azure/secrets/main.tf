@@ -90,3 +90,12 @@ resource "azurerm_role_assignment" "version_adder" {
     }
   }
 }
+
+resource "azurerm_role_assignment" "cluster_reader" {
+  for_each = var.cluster_reader.enabled ? toset(var.cluster_secret_ids) : toset([])
+
+  scope                = azurerm_key_vault_secret.this[each.value].resource_versionless_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = var.cluster_reader.principal_id
+  principal_type       = "ServicePrincipal"
+}

@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# No secret value lives here or anywhere in Git: these are only the names of
+# Key Vault secrets and of the identity allowed to read them. The stand-specific
+# values come from Ansible, which writes them into the Argo CD Application.
+
+azure:
+  # https://<vault>.vault.azure.net
+  vaultUrl: ""
+  tenantId: ""
+  # Client ID of the <prefix>-external-secrets managed identity Terraform
+  # creates; its federated credential trusts the service account below.
+  clientId: ""
+
+# Must match the subject of that federated credential.
+serviceAccount: oilscope-secrets
+
+# How often External Secrets re-reads Key Vault. A rotated value reaches the
+# cluster within this interval, without Ansible.
+refreshInterval: 10m
+
+# Key Vault secret names (the secret_mappings of the project configuration).
+keys:
+  ghcrToken: ""
+  postgresPassword: ""
+  redisPassword: ""
+  oilpriceApiKey: ""
+
+registry:
+  host: ghcr.io
+  username: ""
+
+database:
+  cluster: oilscope-db
+  host: oilscope-db-rw
+  name: oil_tracker
+  user: oil_tracker
+
+redis:
+  host: oilscope-redis-master

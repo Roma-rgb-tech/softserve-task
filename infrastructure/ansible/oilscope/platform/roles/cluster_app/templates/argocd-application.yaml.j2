@@ -3,7 +3,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ cluster_app_gitops_application }}
+  name: {{ cluster_app_argocd_app.name }}
   namespace: {{ cluster_app_gitops_namespace }}
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -12,10 +12,10 @@ spec:
   source:
     repoURL: {{ cluster_app_gitops_repo_url }}
     targetRevision: {{ cluster_app_gitops_revision | to_json }}
-    path: {{ cluster_app_gitops_path }}
+    path: {{ cluster_app_argocd_app.path }}
     helm:
-      releaseName: oilscope
-      valuesObject: {{ cluster_app_gitops_values | to_json }}
+      releaseName: {{ cluster_app_argocd_app.name }}
+      valuesObject: {{ cluster_app_argocd_app['values'] | to_json }}
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ cluster_app_namespace }}

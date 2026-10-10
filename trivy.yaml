@@ -1,11 +1,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Read by every Trivy run in this repository (and passed explicitly by the
-# Security workflow). The OilScope chart refuses to render without an image
-# and a hostname, so the misconfiguration scan renders it with placeholders;
-# without them Trivy skips the chart and never checks its manifests.
+# Security workflow). The charts in deploy/helm refuse to render without their
+# stand-specific values, so the misconfiguration scan renders them with
+# placeholders; without them Trivy skips a chart and never checks its manifests.
+# Every value is set on every chart; each chart reads only its own.
 misconfiguration:
   helm:
     set:
-      - image.repository=ghcr.io/example-org/example-project
-      - image.tag=0123456789abcdef0123456789abcdef01234567
       - hostname=app.example.com
+      - azure.vaultUrl=https://example-kv.vault.azure.net/
+      - azure.tenantId=00000000-0000-0000-0000-000000000000
+      - azure.clientId=00000000-0000-0000-0000-000000000000
+      - keys.ghcrToken=example-ghcr-token
+      - keys.postgresPassword=example-db-password
+      - keys.redisPassword=example-redis-password
+      - keys.oilpriceApiKey=example-oilpriceapi-key
+      - registry.username=example-operator

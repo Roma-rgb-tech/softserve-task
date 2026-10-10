@@ -423,8 +423,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CHART: deploy/helm/oilscope
       KUBECONFORM_VERSION: v0.7.0
+      CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
 
     steps:
       - name: Checkout
@@ -435,23 +435,32 @@ jobs:
         with:
           version: v3.19.0
 
-      - name: Lint the chart
+      # The same placeholders the Trivy scan renders the charts with.
+      - name: Collect placeholder values
         run: |
-          helm lint --strict "${CHART}" \
-            --set image.repository=ghcr.io/example-org/example-project \
-            --set image.tag=0123456789abcdef0123456789abcdef01234567 \
-            --set hostname=app.example.com
+          yq '.misconfiguration.helm.set[] | "--set " + .' trivy.yaml | tr '\n' ' ' > "${RUNNER_TEMP}/set-args"
+          cat "${RUNNER_TEMP}/set-args"
 
-      - name: Render the chart
+      - name: Lint the charts
         run: |
-          helm template oilscope "${CHART}" --namespace oilscope \
-            --set image.repository=ghcr.io/example-org/example-project \
-            --set image.tag=0123456789abcdef0123456789abcdef01234567 \
-            --set hostname=app.example.com > "${RUNNER_TEMP}/rendered.yaml"
+          for chart in deploy/helm/*/; do
+            # shellcheck disable=SC2046
+            helm lint --strict "${chart}" $(cat "${RUNNER_TEMP}/set-args")
+          done
 
-      - name: Validate the manifests against the Kubernetes schemas
+      - name: Render the charts
+        run: |
+          for chart in deploy/helm/*/; do
+            name="$(basename "${chart}")"
+            # shellcheck disable=SC2046
+            helm template "${name}" "${chart}" --namespace oilscope \
+              $(cat "${RUNNER_TEMP}/set-args") > "${RUNNER_TEMP}/${name}.yaml"
+          done
+
+      - name: Validate the manifests against the Kubernetes and CRD schemas
         run: |
           curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
             | tar -xz -C "${RUNNER_TEMP}" kubeconform
           "${RUNNER_TEMP}/kubeconform" -strict -summary -ignore-missing-schemas \
-            "${RUNNER_TEMP}/rendered.yaml"
+            -schema-location default -schema-location "${CRD_SCHEMAS}" \
+            "${RUNNER_TEMP}"/*.yaml

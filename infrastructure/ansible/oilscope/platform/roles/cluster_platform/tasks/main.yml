@@ -187,6 +187,20 @@
     wait: true
   when: cluster_platform_gitops | bool
 
+- name: Install External Secrets, which copies Key Vault secrets into the cluster
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: external-secrets
+    chart_repo_url: "{{ cluster_platform_charts.external_secrets.repo }}"
+    chart_ref: "{{ cluster_platform_charts.external_secrets.chart }}"
+    chart_version: "{{ cluster_platform_charts.external_secrets.version }}"
+    release_namespace: "{{ cluster_platform_charts.external_secrets.namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ role_path }}/files/values/external-secrets.yaml"
+    wait: true
+  when: cluster_platform_external_secrets | bool
+
 - name: Tell the operator how to sign in
   ansible.builtin.debug:
     msg:

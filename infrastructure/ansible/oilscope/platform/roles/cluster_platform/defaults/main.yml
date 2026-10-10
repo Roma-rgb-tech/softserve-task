@@ -33,6 +33,11 @@ cluster_platform_charts:
     chart: argo-cd
     version: "^10.10.0"
     namespace: argocd
+  external_secrets:
+    repo: https://charts.external-secrets.io
+    chart: external-secrets
+    version: "^2.11.0"
+    namespace: external-secrets
 
 cluster_platform_acme_server: https://acme-v02.api.letsencrypt.org/directory
 cluster_platform_acme_email: ""
@@ -44,6 +49,7 @@ cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"
 
 cluster_platform_managed: "{{ oilscope_kubernetes_managed | bool }}"
 cluster_platform_gitops: "{{ oilscope_gitops_enabled | bool }}"
+cluster_platform_external_secrets: "{{ oilscope_external_secrets | bool }}"
 cluster_platform_cloud: "{{ oilscope_kubernetes_cloud }}"
 
 cluster_platform_traefik_timeout: "{{ '15m' if cluster_platform_managed | bool else '5m' }}"

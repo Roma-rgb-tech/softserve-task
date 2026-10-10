@@ -66,6 +66,14 @@ cluster_app_gitops_application: oilscope
 cluster_app_gitops_repo_url: "{{ oilscope_gitops.repo_url | default('') }}"
 cluster_app_gitops_revision: "{{ oilscope_gitops.revision | default('') }}"
 cluster_app_gitops_path: "{{ oilscope_gitops.path | default('deploy/helm/oilscope') }}"
+cluster_app_gitops_secrets_path: >-
+  {{ oilscope_gitops.secrets_path | default('deploy/helm/oilscope-secrets') }}
+
+cluster_app_external_secrets: "{{ oilscope_external_secrets | bool }}"
+cluster_app_external_secrets_identity: "{{ oilscope_name_prefix | trim }}-external-secrets"
+cluster_app_secret_mappings: >-
+  {{ (oilscope_project_config.vms[oilscope_secrets_vm | trim] | default({})).secret_mappings | default({}) }}
+cluster_app_az: az
 
 cluster_app_cluster_label: >-
   {{ {'gcp': 'GKE', 'aws': 'EKS', 'azure': 'AKS'}[oilscope_kubernetes_cloud]

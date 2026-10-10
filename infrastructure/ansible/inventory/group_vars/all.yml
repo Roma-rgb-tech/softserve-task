@@ -99,6 +99,12 @@ oilscope_kubernetes_cloud: >-
 
 oilscope_gitops: "{{ oilscope_kubernetes.gitops | default({}) }}"
 oilscope_gitops_enabled: "{{ oilscope_gitops.enabled | default(false) | bool }}"
+# On AKS the application secrets come from Key Vault through External Secrets;
+# elsewhere Ansible still writes them into the cluster.
+oilscope_external_secrets: >-
+  {{ oilscope_gitops_enabled | bool
+     and oilscope_kubernetes_managed | bool
+     and (oilscope_kubernetes_cloud | trim) == 'azure' }}
 
 oilscope_secrets_vm: >-
   {{ (oilscope_project_config.vms | dict2items

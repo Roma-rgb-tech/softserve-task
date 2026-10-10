@@ -63,6 +63,11 @@ module "secrets" {
   resource_group_name = module.network.resource_group_name
   location            = module.network.location
   principal_ids       = module.iam.principal_ids
+
+  cluster_reader = {
+    enabled      = module.kubernetes.external_secrets_reader.enabled
+    principal_id = module.kubernetes.external_secrets_reader.principal_id
+  }
 }
 
 module "monitoring" {

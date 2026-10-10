@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+apiVersion: v2
+name: oilscope-secrets
+description: The OilScope application secrets, copied from Azure Key Vault by External Secrets
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

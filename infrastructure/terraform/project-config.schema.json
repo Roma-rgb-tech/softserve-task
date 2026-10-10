@@ -780,7 +780,7 @@
           }
         },
         "gitops": {
-          "description": "Argo CD. enabled true installs Argo CD with the platform layer and hands history, fetcher and ui to it: an Application follows the Helm chart in deploy/helm/oilscope at repo_url and revision, syncs it automatically, prunes what Git no longer has and undoes changes made by hand. enabled false (or no block) renders the same chart and applies it from Ansible. See docs/gitops.md.",
+          "description": "Argo CD. enabled true installs Argo CD with the platform layer and hands history, fetcher and ui to it: an Application follows the Helm chart in deploy/helm/oilscope at repo_url and revision, syncs it automatically, prunes what Git no longer has and undoes changes made by hand. enabled false (or no block) renders the same chart and applies it from Ansible. On AKS the application secrets then come from Key Vault through External Secrets, as a managed identity Terraform creates with a federated credential for the cluster. See docs/gitops.md.",
           "type": "object",
           "additionalProperties": false,
           "required": [
@@ -805,6 +805,11 @@
               "description": "Directory of the chart inside the repository.",
               "type": "string",
               "default": "deploy/helm/oilscope"
+            },
+            "secrets_path": {
+              "description": "Directory of the External Secrets chart inside the repository, used on AKS.",
+              "type": "string",
+              "default": "deploy/helm/oilscope-secrets"
             }
           }
         }

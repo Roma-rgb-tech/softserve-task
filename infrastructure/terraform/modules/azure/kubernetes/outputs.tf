@@ -12,3 +12,12 @@ output "cluster" {
     context  = local.name
   } : null
 }
+
+output "external_secrets_reader" {
+  description = "The identity External Secrets reads the cluster's Key Vault secrets as. enabled is known at plan time; principal_id only after apply."
+  value = {
+    enabled      = local.external_secrets
+    principal_id = local.external_secrets ? azurerm_user_assigned_identity.external_secrets[0].principal_id : null
+    client_id    = local.external_secrets ? azurerm_user_assigned_identity.external_secrets[0].client_id : null
+  }
+}
