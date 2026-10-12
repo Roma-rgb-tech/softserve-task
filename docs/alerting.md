@@ -174,6 +174,12 @@ kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c 
 
 ## What it looks like
 
+On a quiet cluster the Alertmanager page holds a single alert: `Watchdog`,
+which always fires to prove the pipeline from Prometheus is alive, and goes
+to the `null` receiver rather than to anyone's phone:
+
+![Alertmanager with only Watchdog, routed to null](../assets/screenshots/alerting-alertmanager-quiet.png)
+
 The load test above, end to end. Prometheus moves `NodeHighCPU` from pending
 to firing once CPU has stayed over the line for five minutes:
 

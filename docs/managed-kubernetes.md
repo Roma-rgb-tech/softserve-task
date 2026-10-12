@@ -192,6 +192,12 @@ it, on the managed clusters as on k3s - in Grafana under *Dashboards*:
 The managed control plane itself (API server internals, etcd, scheduler) is the
 provider's, and is not scraped.
 
+![Kubernetes / Compute Resources / Cluster on AKS](../assets/screenshots/cluster-grafana-compute.png)
+
+Headlamp shows the same cluster as a map, grouped by namespace:
+
+![Headlamp map of the AKS cluster](../assets/screenshots/cluster-headlamp-map.png)
+
 ## Things to know
 
 - **Cost.** GKE's zonal control plane is covered by the free tier and AKS's

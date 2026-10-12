@@ -45,6 +45,23 @@ have already been persisted in PostgreSQL.
 
 ![PostgreSQL-backed market observation ledger](assets/screenshots/observation-ledger.png)
 
+### The platform on AKS
+
+Everything the playbook installs on the managed cluster, one namespace per
+component, as Headlamp maps it:
+
+![Headlamp map of the cluster by namespace](assets/screenshots/cluster-headlamp-map.png)
+
+Argo CD keeps the services in step with Git — the Deployments, the migration
+hook and the ingress with its certificate:
+
+![The oilscope Application in Argo CD: Synced and Healthy](assets/screenshots/gitops-argocd-oilscope.png)
+
+Grafana's cluster dashboard; the plateau in the CPU graph is the load test
+below:
+
+![Kubernetes / Compute Resources / Cluster in Grafana](assets/screenshots/cluster-grafana-compute.png)
+
 ### Alerting and on-call
 
 A load test on one node: Prometheus fires `NodeHighCPU`, Alertmanager keeps

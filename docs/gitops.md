@@ -147,6 +147,17 @@ kubectl -n oilscope get deployment ui -w
 Argo CD's own metrics (sync status, reconcile time, Git requests) are scraped
 by Prometheus through the chart's ServiceMonitors.
 
+On the AKS stand, `oilscope` follows the branch and shows every object the
+chart renders, the PreSync migration Job among them:
+
+![The oilscope Application: Synced and Healthy](../assets/screenshots/gitops-argocd-oilscope.png)
+
+and `oilscope-secrets` holds the SecretStore that signs in to Key Vault with
+workload identity and the four ExternalSecrets, each with the Secret it
+writes:
+
+![The oilscope-secrets Application: SecretStore, ExternalSecrets and their Secrets](../assets/screenshots/gitops-argocd-secrets.png)
+
 ## Limits and next steps
 
 - Redis and the database stay in Ansible: they are bootstrap and stateful
