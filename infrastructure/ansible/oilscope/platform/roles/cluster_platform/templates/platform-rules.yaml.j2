@@ -69,3 +69,29 @@ spec:
               full for ten minutes; at 100% the kubelet evicts pods and images
               stop pulling.
             runbook_url: "{{ cluster_platform_runbook_url }}/node-disk-almost-full.md"
+{% if cluster_platform_managed | bool %}
+
+    # On a managed control plane the API server probes itself over loopback
+    # ([::1]:443, GET /readyz), and the provider's instances answer 500 now and
+    # then. The chart's KubeClientErrors counts those and pages for a control
+    # plane nobody here can fix, so on a managed cluster it is replaced by this
+    # one, which leaves loopback out and still catches every real client.
+    - name: oilscope.kubernetes-clients
+      rules:
+        - alert: KubeClientErrors
+          expr: >-
+            (
+              sum by (cluster, instance, job, namespace) (rate(rest_client_requests_total{code=~"5..", host!~"\\[::1\\]:.*|127\\.0\\.0\\.1:.*|localhost:.*"}[5m]))
+              / sum by (cluster, instance, job, namespace) (rate(rest_client_requests_total[5m]))
+            ) > 0.01
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}Kubernetes API client {{ $labels.job }}/{{ $labels.instance }} gets {{ $value | humanizePercentage }} server errors{% endraw %}"
+            description: >-
+              A client of the Kubernetes API has received 5xx for more than 1%
+              of its requests for fifteen minutes. Loopback calls of the API
+              server to itself are left out; see the runbook for why.
+            runbook_url: "{{ cluster_platform_runbook_url }}/kube-client-errors.md"
+{% endif %}

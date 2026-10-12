@@ -44,6 +44,12 @@ rest. On top of them:
 | NodeHighMemory | node memory > `monitoring.memory_percent`, 10 min | warning | same |
 | NodeDiskAlmostFull | filesystem > `monitoring.disk_percent`, 10 min | warning | same |
 
+On a managed cluster the chart's `KubeClientErrors` is replaced by a copy
+that ignores the API server's loopback health checks (`[::1]:443`), which AKS
+answers with an occasional 500 — see
+[runbooks/kube-client-errors.md](runbooks/kube-client-errors.md) for how that
+was found.
+
 The node thresholds come from the same `monitoring` block of the project
 configuration as the cloud alerts, so 80% means the same thing for a VM and
 for a node. Every rule carries a `runbook_url` into

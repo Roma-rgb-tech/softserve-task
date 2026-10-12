@@ -118,6 +118,10 @@
          + ([role_path ~ '/files/values/kube-prometheus-stack-pagerduty.yaml']
             if cluster_platform_pagerduty_routing_key | length > 0 else []) }}
     values:
+      # On a managed cluster platform-rules.yaml.j2 carries its own
+      # KubeClientErrors, without the API server's loopback health checks.
+      defaultRules: >-
+        {{ {'disabled': {'KubeClientErrors': true}} if cluster_platform_managed | bool else {} }}
       alertmanager:
         ingress:
           hosts:

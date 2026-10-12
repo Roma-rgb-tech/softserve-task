@@ -24,6 +24,7 @@ Each page has the same four parts:
 | NodeHighCPU | warning, critical | [node-high-cpu.md](node-high-cpu.md) |
 | NodeHighMemory | warning | [node-high-memory.md](node-high-memory.md) |
 | NodeDiskAlmostFull | warning | [node-disk-almost-full.md](node-disk-almost-full.md) |
+| KubeClientErrors (managed clusters) | warning | [kube-client-errors.md](kube-client-errors.md) |
 
 The chart's own rules (`KubePodCrashLooping`, `KubeNodeNotReady`,
 `KubePersistentVolumeFillingUp`, `TargetDown` …) link to the upstream
