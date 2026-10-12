@@ -45,6 +45,21 @@ have already been persisted in PostgreSQL.
 
 ![PostgreSQL-backed market observation ledger](assets/screenshots/observation-ledger.png)
 
+### Alerting and on-call
+
+A load test on one node: Prometheus fires `NodeHighCPU`, Alertmanager keeps
+the critical and silences its warning, and PagerDuty pages the person on call
+with the runbook attached. When the load stops the incident resolves by itself.
+
+![NodeHighCPU firing in Prometheus](assets/screenshots/alerting-prometheus-firing.png)
+
+![The PagerDuty incident with the runbook link](assets/screenshots/alerting-pagerduty-incident.png)
+
+![PagerDuty activity: a test page, a real KubeClientErrors incident and its resolution](assets/screenshots/alerting-pagerduty-activity.png)
+
+How the first real page was investigated and tuned is in
+[`docs/alerting.md`](docs/alerting.md#what-it-looks-like).
+
 ## Technology stack
 
 | Area           | Technology                                    |
@@ -393,6 +408,12 @@ Two honest caveats:
   responses and spend are watched by Cloud Monitoring and CloudWatch, with the
   alerts mailed from the same configuration on both sides. Nothing self-hosted.
   See [`docs/monitoring.md`](docs/monitoring.md).
+
+- **On a cluster, alerts page someone.** Prometheus rules for the services,
+  the database and the nodes feed Alertmanager, which groups them, silences a
+  warning behind its own critical and pages through PagerDuty once a routing
+  key is mapped. Every alert links to a runbook in `docs/runbooks`.
+  See [`docs/alerting.md`](docs/alerting.md).
 
 - **The database is one flag.** `database.managed` moves PostgreSQL between a
   container on a VM and the cloud's own service - Cloud SQL or RDS - in a subnet

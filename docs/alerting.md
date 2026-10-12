@@ -172,6 +172,43 @@ kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c 
   amtool config routes test --alertmanager.url=http://localhost:9093 severity=critical alertname=X
 ```
 
+## What it looks like
+
+The load test above, end to end. Prometheus moves `NodeHighCPU` from pending
+to firing once CPU has stayed over the line for five minutes:
+
+![NodeHighCPU firing in Prometheus](../assets/screenshots/alerting-prometheus-firing.png)
+
+Both the warning and the critical rule fire; Alertmanager inhibits the
+warning, so PagerDuty opens one critical incident, with the summary rendered
+and the runbook and Alertmanager linked:
+
+![The PagerDuty incident](../assets/screenshots/alerting-pagerduty-incident.png)
+
+Once the load stops, Alertmanager sends the resolution and PagerDuty closes
+the incident through the API — no one has to press Resolve:
+
+![The incident resolved by the integration](../assets/screenshots/alerting-pagerduty-resolved.png)
+
+### The first real page
+
+Minutes after Alertmanager was turned on it paged for `KubeClientErrors` at
+about 1.6% errors. The failing requests went to the API server's own loopback
+address:
+
+![rest_client_requests_total by host: loopback ::1, GET, 500](../assets/screenshots/alerting-kubeclienterrors-host.png)
+
+and the API server's side named the endpoint — its own `/readyz`:
+
+![apiserver_request_total with code 500: /readyz](../assets/screenshots/alerting-kubeclienterrors-readyz.png)
+
+That is the managed control plane checking itself, nothing in the cluster and
+nothing anyone here could fix, so the rule was replaced on managed clusters
+(see [runbooks/kube-client-errors.md](runbooks/kube-client-errors.md)). The
+incident was acknowledged, annotated and resolved:
+
+![PagerDuty activity over the test](../assets/screenshots/alerting-pagerduty-activity.png)
+
 ## Silences and maintenance
 
 Planned work that will trip alerts — a node upgrade, a database restore —
