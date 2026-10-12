@@ -135,8 +135,8 @@ straight to Alertmanager:
 ```bash
 kubectl -n monitoring exec alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager -- \
   amtool alert add TestPage severity=critical namespace=oilscope \
-  --annotation=summary="Test page from the OilScope Alertmanager" \
-  --annotation=runbook_url=https://github.com/ua-academy-projects/push-and-pray/blob/main/docs/runbooks/README.md \
+  --annotation='summary="Test page from the OilScope Alertmanager"' \
+  --annotation='runbook_url="https://github.com/ua-academy-projects/push-and-pray/blob/main/docs/runbooks/README.md"' \
   --alertmanager.url=http://localhost:9093
 ```
 
