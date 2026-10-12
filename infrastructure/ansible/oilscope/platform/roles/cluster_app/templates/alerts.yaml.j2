@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# What a user of OilScope would notice, as alerts. Every rule names a runbook:
+# the page that arrives at 3 a.m. says what the condition means and what to
+# check first, so whoever is on call does not start from a blank screen.
+{% set ns = cluster_app_namespace %}
+{% set db = cluster_app_database_cluster %}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: oilscope
+  namespace: {{ ns }}
+spec:
+  groups:
+    - name: oilscope.services
+      rules:
+        - alert: OilscopeServiceDown
+          expr: up{namespace="{{ ns }}", job=~"ui|history|fetcher"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{% raw %}{{ $labels.job }} ({{ $labels.pod }}) does not answer Prometheus{% endraw %}"
+            description: >-
+              The service's metrics endpoint has not answered for two minutes:
+              the pod is down, restarting or unreachable.
+            runbook_url: "{{ cluster_app_runbook_url }}/oilscope-service-down.md"
+        - alert: OilscopeServiceMissing
+          # "up == 0" needs a target to report it; a Deployment scaled to zero
+          # or deleted leaves no target at all, so its absence is the signal.
+          expr: >-
+            absent(up{namespace="{{ ns }}", job="ui"})
+            or absent(up{namespace="{{ ns }}", job="history"})
+            or absent(up{namespace="{{ ns }}", job="fetcher"})
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{% raw %}{{ $labels.job }} has no running pod for Prometheus to scrape{% endraw %}"
+            description: >-
+              Prometheus has found no target for the service for five minutes:
+              the Deployment is scaled to zero, deleted, or its pods never start.
+            runbook_url: "{{ cluster_app_runbook_url }}/oilscope-service-down.md"
+        - alert: OilscopeHighErrorRate
+          expr: >-
+            (
+              sum by (job) (rate(http_requests_total{namespace="{{ ns }}", status="5xx"}[5m]))
+              / sum by (job) (rate(http_requests_total{namespace="{{ ns }}"}[5m]))
+            ) > 0.05
+            and sum by (job) (increase(http_requests_total{namespace="{{ ns }}", status="5xx"}[5m])) >= 5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{% raw %}{{ $labels.job }} answers {{ $value | humanizePercentage }} of requests with 5xx{% endraw %}"
+            description: >-
+              More than 5% of the requests, and at least five of them, have
+              failed with a server error over the last five minutes.
+            runbook_url: "{{ cluster_app_runbook_url }}/oilscope-high-error-rate.md"
+        - alert: OilscopeSlowResponses
+          expr: >-
+            histogram_quantile(0.95,
+              sum by (job, le) (rate(http_request_duration_seconds_bucket{namespace="{{ ns }}"}[5m]))
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}95% of {{ $labels.job }} responses take up to {{ $value | humanizeDuration }}{% endraw %}"
+            description: >-
+              The 95th percentile of the response time has been above one
+              second for ten minutes.
+            runbook_url: "{{ cluster_app_runbook_url }}/oilscope-slow-responses.md"
+
+    - name: oilscope.pipeline
+      rules:
+        - alert: FetcherStale
+          # The fetcher collects at 00, 06, 12 and 18 UTC; seven hours without
+          # a success means at least one collection was missed.
+          expr: time() - fetcher_last_success_timestamp_seconds{namespace="{{ ns }}"} > 7 * 3600
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No oil price has been collected for more than seven hours"
+            description: >-
+              The fetcher's last successful collection is older than one
+              scheduled interval: the price API, its key or the queue is failing.
+            runbook_url: "{{ cluster_app_runbook_url }}/fetcher-stale.md"
+        - alert: HistoryQueueMessagesFailing
+          expr: >-
+            sum by (outcome) (increase(history_queue_messages_total{namespace="{{ ns }}", outcome=~"failed|dropped"}[15m])) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}history has {{ $labels.outcome }} {{ $value | printf \"%.0f\" }} queue messages in 15 minutes{% endraw %}"
+            description: >-
+              Failed messages are retried; dropped ones exceeded the retry
+              limit and their observations are lost.
+            runbook_url: "{{ cluster_app_runbook_url }}/history-queue-failing.md"
+
+    - name: oilscope.database
+      rules:
+        - alert: DatabaseInstanceDown
+          expr: >-
+            cnpg_collector_up{namespace="{{ ns }}"} == 0
+            or up{namespace="{{ ns }}", pod=~"{{ db }}-[0-9]+"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{% raw %}PostgreSQL instance {{ $labels.pod }} is down{% endraw %}"
+            description: >-
+              The instance's exporter cannot reach PostgreSQL, or the pod does
+              not answer at all. With one instance left the cluster has no
+              replica to fail over to.
+            runbook_url: "{{ cluster_app_runbook_url }}/database-instance-down.md"
+        - alert: DatabaseReplicationLag
+          expr: max by (pod) (cnpg_pg_replication_lag{namespace="{{ ns }}"}) > 30
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}Replica {{ $labels.pod }} is {{ $value | humanizeDuration }} behind the primary{% endraw %}"
+            description: >-
+              A failover now would lose the transactions the replica has not
+              replayed yet.
+            runbook_url: "{{ cluster_app_runbook_url }}/database-replication-lag.md"

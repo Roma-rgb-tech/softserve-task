@@ -1,7 +1,59 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 ---
+# Alertmanager takes every firing rule from Prometheus, groups the alerts and
+# routes them. Without a PagerDuty routing key everything ends at the "null"
+# receiver and stays visible on the Alertmanager page; the role adds
+# kube-prometheus-stack-pagerduty.yaml, which pages, once the key is set.
 alertmanager:
-  enabled: false
+  enabled: true
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: web
+      traefik.ingress.kubernetes.io/router.middlewares: monitoring-internal-only@kubernetescrd
+    paths:
+      - /
+  alertmanagerSpec:
+    retention: 120h
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      # One notification per alert name, namespace and severity: twenty
+      # crash-looping pods of one Deployment arrive as one page, not twenty.
+      group_by: [alertname, namespace, severity]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: "null"
+    # A critical alert silences the warning of the same name on the same
+    # target, so a node at 97% CPU pages once rather than twice.
+    inhibit_rules:
+      - source_matchers: ["severity = critical"]
+        target_matchers: ["severity =~ warning|info"]
+        equal: [alertname, namespace, instance]
+      - source_matchers: ["severity = warning"]
+        target_matchers: ["severity = info"]
+        equal: [alertname, namespace, instance]
+      - source_matchers: ["alertname = InfoInhibitor"]
+        target_matchers: ["severity = info"]
+        equal: [namespace]
 
 kubeControllerManager:
   enabled: false

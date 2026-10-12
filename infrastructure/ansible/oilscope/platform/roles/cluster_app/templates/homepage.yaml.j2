@@ -51,6 +51,10 @@ data:
             href: http://prometheus.{{ cluster_app_internal_domain }}
             description: Metrics of every service, node and database instance
             siteMonitor: http://kube-prometheus-stack-prometheus.{{ cluster_app_monitoring_namespace }}.svc.cluster.local:9090/-/healthy
+        - Alertmanager:
+            href: http://alertmanager.{{ cluster_app_internal_domain }}
+            description: Firing alerts, silences and where they were sent
+            siteMonitor: http://kube-prometheus-stack-alertmanager.{{ cluster_app_monitoring_namespace }}.svc.cluster.local:9093/-/healthy
 {% if cluster_app_gitops | bool %}
         - Argo CD:
             href: http://argocd.{{ cluster_app_internal_domain }}

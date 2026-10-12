@@ -105,6 +105,9 @@
         cluster_platform_cloudflare_token: "{{ oilscope_secrets.CF_DNS_API_TOKEN | default('') }}"
         cluster_platform_acme_email: "{{ oilscope_public_endpoint.acme_email | default('') }}"
         cluster_platform_grafana_password: "{{ oilscope_secrets.GRAFANA_ADMIN_PASSWORD | default('') }}"
+        cluster_platform_pagerduty_routing_key: "{{ oilscope_secrets.PAGERDUTY_ROUTING_KEY | default('') }}"
+        cluster_platform_alert_thresholds: >-
+          {{ (lookup('ansible.builtin.file', project_config_path) | from_json).monitoring | default({}) }}
 
     - role: oilscope.platform.cluster_app
       vars:

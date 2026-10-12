@@ -194,6 +194,12 @@
     state: present
     template: monitors.yaml.j2
 
+- name: Alert on what a user of OilScope would notice
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_app_kubeconfig }}"
+    state: present
+    template: alerts.yaml.j2
+
 - name: Deploy Homepage
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_app_kubeconfig }}"

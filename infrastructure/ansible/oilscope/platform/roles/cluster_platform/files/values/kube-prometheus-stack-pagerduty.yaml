@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Added on top of kube-prometheus-stack.yaml when the PagerDuty routing key is
+# set. The key itself never enters the Helm values: the role writes it into the
+# alertmanager-pagerduty Secret, the operator mounts that Secret, and
+# Alertmanager reads the file.
+---
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - alertmanager-pagerduty
+  config:
+    route:
+      routes:
+        # Watchdog fires all the time on purpose (it proves the pipeline is
+        # alive); InfoInhibitor exists only to silence info alerts.
+        - receiver: "null"
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+        - receiver: "null"
+          matchers: ['severity =~ "info|none"']
+        # PagerDuty decides who is woken up: the service's escalation policy
+        # and urgency rules turn a critical into a phone call and a warning
+        # into a low-urgency incident.
+        - receiver: pagerduty
+          matchers: ['severity =~ "critical|warning"']
+    receivers:
+      - name: "null"
+      - name: pagerduty
+        pagerduty_configs:
+          - routing_key_file: /etc/alertmanager/secrets/alertmanager-pagerduty/routing-key
+            send_resolved: true
+            severity: '{{ .CommonLabels.severity }}'
+            class: '{{ .CommonLabels.alertname }}'
+            component: '{{ if .CommonLabels.namespace }}{{ .CommonLabels.namespace }}{{ else }}cluster{{ end }}'
+            group: '{{ .CommonLabels.job }}'
+            details:
+              summary: '{{ .CommonAnnotations.summary }}'
+              description: '{{ .CommonAnnotations.description }}'
+              firing: '{{ .Alerts.Firing | len }}'
+              runbook: '{{ .CommonAnnotations.runbook_url }}'
+            links:
+              - href: '{{ .CommonAnnotations.runbook_url }}'
+                text: Runbook

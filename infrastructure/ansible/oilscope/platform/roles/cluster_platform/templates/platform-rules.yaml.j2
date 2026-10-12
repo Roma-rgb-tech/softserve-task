@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# The chart's default rules already cover Kubernetes itself (crash-looping
+# pods, NotReady nodes, filling volumes, targets down). These add the node
+# thresholds from the project configuration's "monitoring" block, so a node in
+# the cluster crosses the same line as a VM watched by the cloud.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: oilscope-nodes
+  namespace: {{ cluster_platform_charts.monitoring.namespace }}
+spec:
+  groups:
+    - name: oilscope.nodes
+      rules:
+        - alert: NodeHighCPU
+          expr: >-
+            100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
+            > {{ cluster_platform_cpu_percent | int }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}CPU on {{ $labels.instance }} is at {{ $value | printf \"%.0f\" }}%{% endraw %}"
+            description: >-
+              Average CPU use over five minutes has stayed above
+              {{ cluster_platform_cpu_percent | int }}% for five minutes.
+            runbook_url: "{{ cluster_platform_runbook_url }}/node-high-cpu.md"
+        - alert: NodeHighCPU
+          expr: >-
+            100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
+            > {{ cluster_platform_cpu_critical_percent | int }}
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{% raw %}CPU on {{ $labels.instance }} is at {{ $value | printf \"%.0f\" }}%{% endraw %}"
+            description: >-
+              Average CPU use over five minutes has stayed above
+              {{ cluster_platform_cpu_critical_percent | int }}% for five minutes;
+              the node's pods are being throttled.
+            runbook_url: "{{ cluster_platform_runbook_url }}/node-high-cpu.md"
+        - alert: NodeHighMemory
+          expr: >-
+            100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+            > {{ cluster_platform_memory_percent | int }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}Memory on {{ $labels.instance }} is at {{ $value | printf \"%.0f\" }}%{% endraw %}"
+            description: >-
+              Less than {{ 100 - cluster_platform_memory_percent | int }}% of the
+              node's memory has been available for ten minutes; the kubelet will
+              start evicting pods if it keeps falling.
+            runbook_url: "{{ cluster_platform_runbook_url }}/node-high-memory.md"
+        - alert: NodeDiskAlmostFull
+          expr: >-
+            100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs",mountpoint!~"/boot.*"}
+                     / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs",mountpoint!~"/boot.*"})
+            > {{ cluster_platform_disk_percent | int }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}{{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | printf \"%.0f\" }}% full{% endraw %}"
+            description: >-
+              The filesystem has been more than {{ cluster_platform_disk_percent | int }}%
+              full for ten minutes; at 100% the kubelet evicts pods and images
+              stop pulling.
+            runbook_url: "{{ cluster_platform_runbook_url }}/node-disk-almost-full.md"

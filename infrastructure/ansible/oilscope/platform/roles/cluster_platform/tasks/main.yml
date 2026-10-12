@@ -98,14 +98,14 @@
       - "{{ role_path }}/files/values/cloudnative-pg.yaml"
     wait: true
 
-- name: Create the monitoring namespace, its allow list and the Grafana login
+- name: Create the monitoring namespace, its allow list, the Grafana login and the PagerDuty key
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_platform_kubeconfig }}"
     state: present
     template: monitoring-access.yaml.j2
   no_log: true
 
-- name: Install Prometheus and Grafana
+- name: Install Prometheus, Alertmanager and Grafana
   kubernetes.core.helm:
     kubeconfig: "{{ cluster_platform_kubeconfig }}"
     name: kube-prometheus-stack
@@ -113,14 +113,23 @@
     chart_ref: "{{ cluster_platform_charts.monitoring.chart }}"
     chart_version: "{{ cluster_platform_charts.monitoring.version }}"
     release_namespace: "{{ cluster_platform_charts.monitoring.namespace }}"
-    values_files:
-      - "{{ role_path }}/files/values/kube-prometheus-stack.yaml"
+    values_files: >-
+      {{ [role_path ~ '/files/values/kube-prometheus-stack.yaml']
+         + ([role_path ~ '/files/values/kube-prometheus-stack-pagerduty.yaml']
+            if cluster_platform_pagerduty_routing_key | length > 0 else []) }}
     values:
+      alertmanager:
+        ingress:
+          hosts:
+            - "alertmanager.{{ cluster_platform_internal_domain }}"
+        alertmanagerSpec:
+          externalUrl: "http://alertmanager.{{ cluster_platform_internal_domain }}"
       prometheus:
         ingress:
           hosts:
             - "prometheus.{{ cluster_platform_internal_domain }}"
         prometheusSpec:
+          externalUrl: "http://prometheus.{{ cluster_platform_internal_domain }}"
           storageSpec:
             volumeClaimTemplate:
               spec:
@@ -138,6 +147,12 @@
     kubeconfig: "{{ cluster_platform_kubeconfig }}"
     state: present
     template: platform-monitors.yaml.j2
+
+- name: Alert on the nodes and on the monitoring pipeline itself
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: platform-rules.yaml.j2
 
 - name: Create the Headlamp namespace and its internal-only allow list
   kubernetes.core.k8s:
@@ -211,6 +226,9 @@
       - "Grafana: http://grafana.{{ cluster_platform_internal_domain }} - admin, password in
         the GRAFANA_ADMIN_PASSWORD container of the cloud secret store"
       - "Prometheus: http://prometheus.{{ cluster_platform_internal_domain }}"
+      - "Alertmanager: http://alertmanager.{{ cluster_platform_internal_domain }} - pages
+        {{ 'PagerDuty for warning and critical alerts' if cluster_platform_pagerduty_routing_key | length > 0
+           else 'nobody: map PAGERDUTY_ROUTING_KEY to turn paging on' }}"
 
 - name: Tell the operator how to sign in to Argo CD
   ansible.builtin.debug:

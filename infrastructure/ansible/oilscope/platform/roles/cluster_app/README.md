@@ -25,3 +25,8 @@ OilScope inside the cluster, applied from the controller:
 7. ServiceMonitors for the services, a PodMonitor for the PostgreSQL
    instances, and the OilScope dashboard (`files/oilscope-dashboard.json`)
    as a ConfigMap Grafana's sidecar loads.
+8. A `PrometheusRule` with the alerts a user of OilScope would notice —
+   a service down, 5xx, slow responses, a stale fetcher, failing queue
+   messages, a PostgreSQL instance down or lagging — each with a link to its
+   runbook in `docs/runbooks` (`cluster_app_runbook_url`). See
+   `docs/alerting.md`.

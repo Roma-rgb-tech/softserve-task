@@ -23,3 +23,14 @@ type: Opaque
 data:
   admin-user: {{ 'admin' | b64encode }}
   admin-password: {{ cluster_platform_grafana_password | b64encode }}
+{% if cluster_platform_pagerduty_routing_key | length > 0 %}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-pagerduty
+  namespace: {{ cluster_platform_charts.monitoring.namespace }}
+type: Opaque
+data:
+  routing-key: {{ cluster_platform_pagerduty_routing_key | b64encode }}
+{% endif %}

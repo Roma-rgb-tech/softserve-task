@@ -35,6 +35,8 @@ cluster_app_homepage_image: ghcr.io/gethomepage/homepage:v2.4.0
 cluster_app_homepage_namespace: homepage
 
 cluster_app_monitoring_namespace: monitoring
+# Where the alerts' runbook links point; docs/runbooks in the repository.
+cluster_app_runbook_url: https://github.com/ua-academy-projects/push-and-pray/blob/main/docs/runbooks
 
 cluster_app_wait_timeout: 600
 

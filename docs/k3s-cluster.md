@@ -81,9 +81,10 @@ Headlamp asks for a token, Grafana for `admin` and the password in the
 ## Monitoring
 
 kube-prometheus-stack runs Prometheus (three days of history), its operator,
-node-exporter, kube-state-metrics and Grafana; Alertmanager is off while the
-clouds' own monitoring sends the alerts. Prometheus scrapes whatever a
-ServiceMonitor or PodMonitor points it at:
+node-exporter, kube-state-metrics, Grafana and Alertmanager, which pages
+through PagerDuty once a routing key is mapped — see
+[alerting.md](alerting.md). Prometheus scrapes whatever a ServiceMonitor or
+PodMonitor points it at:
 
 | Target | Endpoint | What it says |
 | --- | --- | --- |

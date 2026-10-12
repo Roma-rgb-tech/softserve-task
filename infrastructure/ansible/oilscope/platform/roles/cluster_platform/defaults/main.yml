@@ -44,6 +44,18 @@ cluster_platform_acme_email: ""
 cluster_platform_cloudflare_token: ""
 cluster_platform_grafana_password: ""
 
+# Alerting. The routing key comes from the PAGERDUTY_ROUTING_KEY mapping of
+# the first k3s server; left empty, Alertmanager runs and pages nobody.
+cluster_platform_pagerduty_routing_key: ""
+# The "monitoring" block of the project configuration, so the cluster alerts
+# use the same thresholds as the clouds' own.
+cluster_platform_alert_thresholds: {}
+cluster_platform_cpu_percent: "{{ cluster_platform_alert_thresholds.cpu_percent | default(80) }}"
+cluster_platform_cpu_critical_percent: 95
+cluster_platform_memory_percent: "{{ cluster_platform_alert_thresholds.memory_percent | default(85) }}"
+cluster_platform_disk_percent: "{{ cluster_platform_alert_thresholds.disk_percent | default(85) }}"
+cluster_platform_runbook_url: https://github.com/ua-academy-projects/push-and-pray/blob/main/docs/runbooks
+
 cluster_platform_internal_domain: "{{ oilscope_internal_domain }}"
 cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"
 

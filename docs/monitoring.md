@@ -1,5 +1,9 @@
 # Monitoring
 
+> This page covers the clouds' own monitoring of the VMs. Alerts on the
+> cluster's workloads — Prometheus, Alertmanager and PagerDuty — are in
+> [alerting.md](alerting.md).
+
 Every alert, dashboard and budget here is built from the cloud's own tools —
 Cloud Monitoring and Cloud Logging on GCP, CloudWatch and AWS Budgets on AWS.
 Nothing is self-hosted. That is a deliberate constraint, and it also happens to
