@@ -9,6 +9,7 @@
 #   security add-generic-password -s oilscope-ghcr        -a "$USER" -w
 #   security add-generic-password -s oilscope-oilpriceapi -a "$USER" -w
 #   security add-generic-password -s oilscope-cloudflare  -a "$USER" -w
+#   security add-generic-password -s oilscope-pagerduty   -a "$USER" -w
 #
 # On Linux the equivalent is `secret-tool store` / `secret-tool lookup`.
 
@@ -25,6 +26,7 @@ export OILSCOPE_SSH_KEY="$HOME/.ssh/id_ed25519"
 # the deployment leaves them alone and asks for nothing.
 export GHCR_TOKEN="$(security find-generic-password -s oilscope-ghcr -w 2>/dev/null)"
 export OILPRICEAPI_KEY="$(security find-generic-password -s oilscope-oilpriceapi -w 2>/dev/null)"
+export PAGERDUTY_ROUTING_KEY="$(security find-generic-password -s oilscope-pagerduty -w 2>/dev/null)"
 
 export TF_VAR_cloudflare_api_token="$(security find-generic-password -s oilscope-cloudflare -w 2>/dev/null)"
 export CF_DNS_API_TOKEN="$TF_VAR_cloudflare_api_token"
