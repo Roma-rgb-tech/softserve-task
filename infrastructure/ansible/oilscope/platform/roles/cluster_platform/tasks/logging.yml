@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# ELK through ECK. The store first (Elasticsearch and Kibana), then the index
+# template that sets retention, and only then the pipeline, so the first line
+# Logstash writes already lands in a data stream with the right lifecycle.
+---
+- name: Install the ECK operator
+  kubernetes.core.helm:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    name: eck-operator
+    chart_repo_url: "{{ cluster_platform_charts.eck.repo }}"
+    chart_ref: "{{ cluster_platform_charts.eck.chart }}"
+    chart_version: "{{ cluster_platform_charts.eck.version }}"
+    release_namespace: "{{ cluster_platform_charts.eck.namespace }}"
+    create_namespace: true
+    values_files:
+      - "{{ role_path }}/files/values/eck-operator.yaml"
+    wait: true
+
+- name: Create Elasticsearch and Kibana, and Kibana's internal-only route
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: logging-store.yaml.j2
+
+- name: Wait for Elasticsearch to accept requests
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    api_version: elasticsearch.k8s.elastic.co/v1
+    kind: Elasticsearch
+    name: logs
+    namespace: "{{ cluster_platform_logging_namespace }}"
+  register: cluster_platform_logging_es
+  until: >-
+    cluster_platform_logging_es.resources | length > 0
+    and (cluster_platform_logging_es.resources[0].status | default({})).phase | default('') == 'Ready'
+    and (cluster_platform_logging_es.resources[0].status | default({})).health | default('') in ['green', 'yellow']
+  retries: 60
+  delay: 10
+
+- name: Set how long logs are kept, before the first one arrives
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: logging-index-template.yaml.j2
+
+- name: Wait for the index template to be in place
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    kind: Job
+    name: "{{ cluster_platform_logging_template_job }}"
+    namespace: "{{ cluster_platform_logging_namespace }}"
+  register: cluster_platform_logging_job
+  until: >-
+    cluster_platform_logging_job.resources | length == 0
+    or (cluster_platform_logging_job.resources[0].status | default({})).succeeded | default(0) | int > 0
+  retries: 30
+  delay: 10
+  failed_when: >-
+    cluster_platform_logging_job.resources | length > 0
+    and (cluster_platform_logging_job.resources[0].status | default({})).failed | default(0) | int
+        > cluster_platform_logging_job.resources[0].spec.backoffLimit | int
+
+- name: Create Logstash and Filebeat
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: logging-pipeline.yaml.j2
+
+- name: Alert when the log pipeline stops
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cluster_platform_kubeconfig }}"
+    state: present
+    template: logging-rules.yaml.j2
+
+- name: Tell the operator how to sign in to Kibana
+  ansible.builtin.debug:
+    msg:
+      - "Kibana: http://kibana.{{ cluster_platform_internal_domain }} - elastic, password:
+        kubectl --kubeconfig {{ cluster_platform_kubeconfig }}
+        -n {{ cluster_platform_logging_namespace }} get secret logs-es-elastic-user
+        -o jsonpath='{.data.elastic}' | base64 -d"
+      - "Logs: the logs-oilscope-default data stream, kept
+        {{ cluster_platform_logging_retention_days | int }} days. Create a data view for
+        logs-oilscope-* in Kibana once (docs/logging.md)."

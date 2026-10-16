@@ -38,6 +38,11 @@ cluster_platform_charts:
     chart: external-secrets
     version: "^2.11.0"
     namespace: external-secrets
+  eck:
+    repo: https://helm.elastic.co
+    chart: eck-operator
+    version: "^3.5.0"
+    namespace: elastic-system
 
 cluster_platform_acme_server: https://acme-v02.api.letsencrypt.org/directory
 cluster_platform_acme_email: ""
@@ -62,6 +67,17 @@ cluster_platform_private_ranges: "{{ oilscope_private_ranges }}"
 cluster_platform_managed: "{{ oilscope_kubernetes_managed | bool }}"
 cluster_platform_gitops: "{{ oilscope_gitops_enabled | bool }}"
 cluster_platform_external_secrets: "{{ oilscope_external_secrets | bool }}"
+
+# Logs: ECK runs Elasticsearch, Kibana, Logstash and Filebeat in their own
+# namespace. One Elasticsearch node is enough for a stand; the version is the
+# Elastic Stack release all four run.
+cluster_platform_logging: "{{ oilscope_logging_enabled | default(false) | bool }}"
+cluster_platform_logging_namespace: logging
+cluster_platform_elastic_version: "9.2.4"
+cluster_platform_logging_storage_gb: "{{ (oilscope_logging | default({})).storage_gb | default(10) }}"
+cluster_platform_logging_retention_days: "{{ (oilscope_logging | default({})).retention_days | default(7) }}"
+# The namespace whose containers Logstash parses as OilScope services.
+cluster_platform_logging_app_namespace: "{{ oilscope_namespace | default('oilscope') }}"
 cluster_platform_cloud: "{{ oilscope_kubernetes_cloud }}"
 
 cluster_platform_traefik_timeout: "{{ '15m' if cluster_platform_managed | bool else '5m' }}"
@@ -86,3 +102,50 @@ cluster_platform_traefik_annotations:
     public: {}
     internal:
       service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+# The Job that puts the index template runs curl from this image.
+cluster_platform_logging_curl_image: curlimages/curl:8.15.0
+# The logs-oilscope-* data streams: a lifecycle that deletes old lines, a
+# single shard with no replica, and keyword fields for filtering in Kibana.
+# Priority above the built-in logs-*-* template (100) so this one wins.
+cluster_platform_logging_index_template:
+  index_patterns: ["logs-oilscope-*"]
+  data_stream: {}
+  priority: 300
+  template:
+    settings:
+      number_of_shards: 1
+      number_of_replicas: 0
+    lifecycle:
+      data_retention: "{{ cluster_platform_logging_retention_days | int }}d"
+    mappings:
+      properties:
+        "@timestamp":
+          type: date
+        message:
+          type: text
+        log:
+          properties:
+            level:
+              type: keyword
+            logger:
+              type: keyword
+        service:
+          properties:
+            name:
+              type: keyword
+        url:
+          properties:
+            path:
+              type: keyword
+        http:
+          properties:
+            request:
+              properties:
+                method:
+                  type: keyword
+            response:
+              properties:
+                status_code:
+                  type: integer
+cluster_platform_logging_template_job: >-
+  logs-index-template-{{ (cluster_platform_logging_index_template | to_json | hash('sha1'))[:8] }}

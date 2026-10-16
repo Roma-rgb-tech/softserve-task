@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+---
+# The operator only reconciles; Elasticsearch, Kibana, Logstash and Filebeat
+# are the resources in templates/logging-*.yaml.j2.
+resources:
+  requests:
+    cpu: 50m
+    memory: 150Mi
+  limits:
+    memory: 512Mi

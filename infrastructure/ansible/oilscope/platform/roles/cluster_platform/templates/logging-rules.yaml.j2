@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# The log pipeline watched like any other service: when Elasticsearch is not
+# ready or Filebeat is missing from a node, lines are being lost or queued, and
+# nobody notices until they search for them during an incident.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: oilscope-logging
+  namespace: {{ cluster_platform_charts.monitoring.namespace }}
+spec:
+  groups:
+    - name: oilscope.logging
+      rules:
+        - alert: LogStoreUnavailable
+          expr: >-
+            kube_statefulset_status_replicas_ready{namespace="{{ cluster_platform_logging_namespace }}", statefulset=~"logs-es-.*"}
+            < kube_statefulset_replicas{namespace="{{ cluster_platform_logging_namespace }}", statefulset=~"logs-es-.*"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Elasticsearch has not been ready for ten minutes"
+            description: >-
+              The logs Elasticsearch node is not ready. Logstash holds what it
+              can and then drops; Kibana shows nothing new.
+            runbook_url: "{{ cluster_platform_runbook_url }}/logging-pipeline.md"
+        - alert: LogShipperMissing
+          expr: >-
+            kube_daemonset_status_number_unavailable{namespace="{{ cluster_platform_logging_namespace }}", daemonset=~"logs-beat-.*"}
+            > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{% raw %}Filebeat is missing from {{ $value }} node(s){% endraw %}"
+            description: >-
+              A node has no running Filebeat, so the logs of the pods on it are
+              not collected.
+            runbook_url: "{{ cluster_platform_runbook_url }}/logging-pipeline.md"
+        - alert: LogPipelineUnavailable
+          expr: >-
+            kube_statefulset_status_replicas_ready{namespace="{{ cluster_platform_logging_namespace }}", statefulset=~"logs-ls"}
+            < 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Logstash has not been ready for ten minutes"
+            description: >-
+              Filebeat cannot hand lines to Logstash and keeps retrying; nothing
+              reaches Elasticsearch.
+            runbook_url: "{{ cluster_platform_runbook_url }}/logging-pipeline.md"

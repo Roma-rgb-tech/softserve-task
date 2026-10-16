@@ -158,6 +158,10 @@
     state: present
     template: platform-rules.yaml.j2
 
+- name: Collect the pods' logs into Elasticsearch, read through Kibana
+  ansible.builtin.include_tasks: logging.yml
+  when: cluster_platform_logging | bool
+
 - name: Create the Headlamp namespace and its internal-only allow list
   kubernetes.core.k8s:
     kubeconfig: "{{ cluster_platform_kubeconfig }}"

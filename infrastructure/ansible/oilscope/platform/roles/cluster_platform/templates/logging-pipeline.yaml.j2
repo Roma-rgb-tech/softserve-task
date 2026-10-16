@@ -1,0 +1,201 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# How the logs get there: Filebeat on every node reads the container log
+# files, adds the pod's Kubernetes metadata and sends them to Logstash, which
+# parses the OilScope services' lines into fields and writes them to
+# Elasticsearch as the logs-oilscope-default data stream.
+---
+apiVersion: logstash.k8s.elastic.co/v1alpha1
+kind: Logstash
+metadata:
+  name: logs
+  namespace: {{ cluster_platform_logging_namespace }}
+spec:
+  version: "{{ cluster_platform_elastic_version }}"
+  count: 1
+  elasticsearchRefs:
+    # ECK hands the address, a user and the CA to the pod as LOGS_ES_*.
+    - clusterName: logs
+      name: logs
+  services:
+    # A Service named logs-ls-beats, Filebeat's output below.
+    - name: beats
+      service:
+        spec:
+          type: ClusterIP
+          ports:
+            - name: beats
+              port: 5044
+              protocol: TCP
+              targetPort: 5044
+  pipelines:
+    - pipeline.id: main
+      config.string: |
+        input {
+          beats {
+            port => 5044
+          }
+        }
+
+        filter {
+          if [kubernetes][namespace] == "{{ cluster_platform_logging_app_namespace }}" {
+            mutate {
+              add_field => { "[service][name]" => "%{[kubernetes][container][name]}" }
+            }
+            # Three line formats, tried in order:
+            #   history, ui - Python logging: 2026-10-16 08:12:33,123 INFO history_service.main ...
+            #   ui, history - uvicorn access: INFO:     10.42.0.7:51334 - "GET /health HTTP/1.1" 200 OK
+            #   fetcher     - Go log/slog:    2026/10/16 08:12:33 ERROR invalid configuration error=...
+            grok {
+              match => {
+                "message" => [
+                  "^%{TIMESTAMP_ISO8601} %{LOGLEVEL:[log][level]} %{NOTSPACE:[log][logger]} %{GREEDYDATA:message}$",
+                  "^%{LOGLEVEL:[log][level]}:\s+%{IP:[client][ip]}:%{INT} - \"%{WORD:[http][request][method]} %{NOTSPACE:[url][path]} HTTP/%{NUMBER:[http][version]}\" %{INT:[http][response][status_code]:int}",
+                  "^%{YEAR}/%{MONTHNUM}/%{MONTHDAY} %{TIME} %{LOGLEVEL:[log][level]} %{GREEDYDATA:message}$"
+                ]
+              }
+              overwrite => ["message"]
+              tag_on_failure => ["_unparsed"]
+            }
+            if [log][level] {
+              mutate {
+                lowercase => ["[log][level]"]
+              }
+            }
+            if [http][response][status_code] and [http][response][status_code] >= 500 {
+              mutate {
+                add_tag => ["http_5xx"]
+              }
+            }
+          }
+        }
+
+        output {
+          elasticsearch {
+            hosts => [ "${LOGS_ES_HOSTS}" ]
+            user => "${LOGS_ES_USER}"
+            password => "${LOGS_ES_PASSWORD}"
+            ssl_certificate_authorities => "${LOGS_ES_SSL_CERTIFICATE_AUTHORITY}"
+            data_stream => "true"
+            data_stream_auto_routing => false
+            data_stream_type => "logs"
+            data_stream_dataset => "oilscope"
+            data_stream_namespace => "default"
+          }
+        }
+  podTemplate:
+    spec:
+      containers:
+        - name: logstash
+          env:
+            - name: LS_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: {{ cluster_platform_logging_namespace }}
+---
+# Autodiscover watches pods and adds their namespace, labels and node.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: filebeat
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: {{ cluster_platform_logging_namespace }}
+---
+apiVersion: beat.k8s.elastic.co/v1beta1
+kind: Beat
+metadata:
+  name: logs
+  namespace: {{ cluster_platform_logging_namespace }}
+spec:
+  type: filebeat
+  version: "{{ cluster_platform_elastic_version }}"
+  config:
+    filebeat.autodiscover:
+      providers:
+        - type: kubernetes
+          node: ${NODE_NAME}
+          hints.enabled: true
+          hints.default_config:
+            type: filestream
+            id: container-${data.kubernetes.container.id}
+            paths:
+              - /var/log/containers/*-${data.kubernetes.container.id}.log
+            parsers:
+              - container: ~
+            prospector.scanner.symlinks: true
+    processors:
+      # The logging stack's own output would only feed itself.
+      - drop_event:
+          when:
+            equals:
+              kubernetes.namespace: {{ cluster_platform_logging_namespace }}
+    output.logstash:
+      hosts: ["logs-ls-beats.{{ cluster_platform_logging_namespace }}.svc:5044"]
+  daemonSet:
+    podTemplate:
+      spec:
+        serviceAccountName: filebeat
+        automountServiceAccountToken: true
+        terminationGracePeriodSeconds: 30
+        tolerations:
+          - operator: Exists
+        containers:
+          - name: filebeat
+            securityContext:
+              # The log files on the node belong to root.
+              runAsUser: 0
+            env:
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+            resources:
+              requests:
+                cpu: 50m
+                memory: 100Mi
+              limits:
+                memory: 300Mi
+            volumeMounts:
+              - name: varlogcontainers
+                mountPath: /var/log/containers
+                readOnly: true
+              - name: varlogpods
+                mountPath: /var/log/pods
+                readOnly: true
+        volumes:
+          - name: varlogcontainers
+            hostPath:
+              path: /var/log/containers
+          - name: varlogpods
+            hostPath:
+              path: /var/log/pods

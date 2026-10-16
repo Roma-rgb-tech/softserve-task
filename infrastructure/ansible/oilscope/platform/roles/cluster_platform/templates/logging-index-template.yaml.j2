@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# How long logs are kept. Logstash writes the logs-oilscope-default data
+# stream; this index template is applied before the first line arrives and
+# gives the stream a data stream lifecycle that deletes what is older than
+# retention_days, one shard without replicas (a single node cannot hold one),
+# and keyword fields for the values worth filtering on in Kibana.
+#
+# The Job puts the template through the Elasticsearch API. The password comes
+# from ECK's secret as an environment variable and goes to curl through a
+# netrc file, so it never appears in a command line.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-index-template
+  namespace: {{ cluster_platform_logging_namespace }}
+data:
+  template.json: |
+    {{ cluster_platform_logging_index_template | to_json }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Named after the template's content: a new retention is a new Job, while an
+  # unchanged one leaves the finished Job alone.
+  name: {{ cluster_platform_logging_template_job }}
+  namespace: {{ cluster_platform_logging_namespace }}
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: put-template
+          image: {{ cluster_platform_logging_curl_image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: logs-es-elastic-user
+                  key: elastic
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              printf 'machine logs-es-http.{{ cluster_platform_logging_namespace }}.svc login elastic password %s\n' "$ES_PASSWORD" > /work/netrc
+              curl --fail-with-body --silent --show-error \
+                --netrc-file /work/netrc --cacert /certs/ca.crt \
+                --request PUT --header 'Content-Type: application/json' \
+                --data-binary @/template/template.json \
+                https://logs-es-http.{{ cluster_platform_logging_namespace }}.svc:9200/_index_template/logs-oilscope
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            - name: template
+              mountPath: /template
+              readOnly: true
+            - name: work
+              mountPath: /work
+      volumes:
+        - name: certs
+          secret:
+            secretName: logs-es-http-certs-public
+        - name: template
+          configMap:
+            name: logs-index-template
+        - name: work
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi

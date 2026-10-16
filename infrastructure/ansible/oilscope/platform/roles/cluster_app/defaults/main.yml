@@ -63,6 +63,8 @@ cluster_app_gitops_values:
       userSecret: "{{ cluster_app_database_cluster }}-app-user"
 
 cluster_app_gitops: "{{ oilscope_gitops_enabled | bool }}"
+cluster_app_logging: "{{ oilscope_logging_enabled | default(false) | bool }}"
+cluster_app_logging_namespace: logging
 cluster_app_gitops_namespace: argocd
 cluster_app_gitops_application: oilscope
 cluster_app_gitops_repo_url: "{{ oilscope_gitops.repo_url | default('') }}"

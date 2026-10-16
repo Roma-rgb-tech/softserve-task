@@ -91,6 +91,10 @@ oilscope_kubeconfig: >-
 oilscope_cluster: "{{ oilscope_project_config.cluster | default({}) }}"
 oilscope_namespace: "{{ oilscope_cluster.namespace | default('oilscope') }}"
 oilscope_internal_domain: "{{ oilscope_cluster.internal_domain | default('oilscope.internal') }}"
+# ELK: Filebeat, Logstash, Elasticsearch and Kibana through ECK. Off unless
+# cluster.logging.enabled, because Elasticsearch alone wants about 2 GB of RAM.
+oilscope_logging: "{{ oilscope_cluster.logging | default({}) }}"
+oilscope_logging_enabled: "{{ oilscope_logging.enabled | default(false) | bool }}"
 
 oilscope_kubernetes: "{{ oilscope_project_config.kubernetes | default({}) }}"
 oilscope_kubernetes_managed: "{{ oilscope_kubernetes.managed | default(false) | bool }}"

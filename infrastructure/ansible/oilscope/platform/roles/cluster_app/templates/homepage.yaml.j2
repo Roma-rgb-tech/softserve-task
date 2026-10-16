@@ -55,6 +55,12 @@ data:
             href: http://alertmanager.{{ cluster_app_internal_domain }}
             description: Firing alerts, silences and where they were sent
             siteMonitor: http://kube-prometheus-stack-alertmanager.{{ cluster_app_monitoring_namespace }}.svc.cluster.local:9093/-/healthy
+{% if cluster_app_logging | bool %}
+        - Kibana:
+            href: http://kibana.{{ cluster_app_internal_domain }}
+            description: Every pod's logs, searchable - the logs-oilscope-* data view
+            siteMonitor: http://logs-kb-http.{{ cluster_app_logging_namespace }}.svc.cluster.local:5601/login
+{% endif %}
 {% if cluster_app_gitops | bool %}
         - Argo CD:
             href: http://argocd.{{ cluster_app_internal_domain }}

@@ -294,6 +294,11 @@
     "database": {
       "instances": 2,
       "storage_gb": 5
+    },
+    "logging": {
+      "enabled": false,
+      "storage_gb": 10,
+      "retention_days": 7
     }
   }
 }
