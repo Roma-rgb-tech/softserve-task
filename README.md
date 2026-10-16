@@ -432,6 +432,12 @@ Two honest caveats:
   key is mapped. Every alert links to a runbook in `docs/runbooks`.
   See [`docs/alerting.md`](docs/alerting.md).
 
+- **Logs are one flag too.** `cluster.logging.enabled` adds ELK through the
+  ECK operator: Filebeat on every node, Logstash parsing the services' lines
+  into fields, a single-node Elasticsearch that deletes lines after
+  `retention_days`, and Kibana at `kibana.<internal_domain>`.
+  See [`docs/logging.md`](docs/logging.md).
+
 - **The database is one flag.** `database.managed` moves PostgreSQL between a
   container on a VM and the cloud's own service - Cloud SQL or RDS - in a subnet
   of its own, reachable only from inside the VPC. The password never reaches

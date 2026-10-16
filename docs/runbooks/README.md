@@ -25,6 +25,7 @@ Each page has the same four parts:
 | NodeHighMemory | warning | [node-high-memory.md](node-high-memory.md) |
 | NodeDiskAlmostFull | warning | [node-disk-almost-full.md](node-disk-almost-full.md) |
 | KubeClientErrors (managed clusters) | warning | [kube-client-errors.md](kube-client-errors.md) |
+| LogStoreUnavailable, LogPipelineUnavailable, LogShipperMissing (with `cluster.logging`) | warning | [logging-pipeline.md](logging-pipeline.md) |
 
 The chart's own rules (`KubePodCrashLooping`, `KubeNodeNotReady`,
 `KubePersistentVolumeFillingUp`, `TargetDown` …) link to the upstream
